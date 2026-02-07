@@ -2,7 +2,7 @@ from ursina import *
 from ursina.prefabs.first_person_controller import FirstPersonController
 
 from engine.map_parser import MapParser
-from settings import SCALE, WALL_HEIGHT, WINDOW_SIZE, WINDOW_TITLE
+from settings import SCALE, WALL_HEIGHT, CEILING_HEIGHT, WINDOW_SIZE, WINDOW_TITLE
 
 
 class Game:
@@ -30,6 +30,7 @@ class Game:
         window.vsync = True
         window.size = WINDOW_SIZE
         window.position = (100, 100)
+        window.fps=60
 
     def _to_world(self, grid_pos):
         """Convertit une position grille (col, row) en position 3D (x, z)."""
@@ -40,18 +41,28 @@ class Game:
     def _build_world(self):
         # Sol
         Entity(
-            model='cube', color=color.gray, collider='box', texture='white_cube',
+            model='cube', color=color.rgb(204, 204, 204), collider='box', texture='textures/wall_2.jpg',
             position=(self.map.cols * SCALE / 2, -0.5, self.map.rows * SCALE / 2),
             scale=(self.map.cols * SCALE, 1, self.map.rows * SCALE),
+            texture_scale=(5,5),
         )
 
         # Murs optimisés
         for col, row, w, h in self.map.wall_rectangles:
             Entity(
-                model='cube', color=color.dark_gray, collider='box', texture='white_cube',
+                model='cube', color=color.dark_gray, collider='box', texture='textures/wall_2.jpg',
                 position=((col + w / 2) * SCALE, WALL_HEIGHT / 2, (self.map.rows - row - h / 2) * SCALE),
                 scale=(w * SCALE, WALL_HEIGHT, h * SCALE),
+                texture_scale=(0.5, 0.5),
             )
+
+        # Plafond
+        Entity(
+            model='cube', color=color.rgb(204, 204, 204), collider='box', texture='textures/ceiling_2.jpg',
+            position=(self.map.cols * SCALE / 2, CEILING_HEIGHT, self.map.rows * SCALE / 2),
+            scale=(self.map.cols * SCALE, 1, self.map.rows * SCALE),
+            texture_scale=(50, 50),
+        )
 
         # Marqueur de spawn
         Entity(
