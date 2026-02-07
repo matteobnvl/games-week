@@ -1,6 +1,6 @@
 from ursina import *
 from ursina.prefabs.first_person_controller import FirstPersonController
-
+from ursina.shaders import lit_with_shadows_shader
 from engine.map_parser import MapParser
 from settings import SCALE, WALL_HEIGHT, CEILING_HEIGHT, WINDOW_SIZE, WINDOW_TITLE
 
@@ -50,10 +50,13 @@ class Game:
         # Murs optimisés
         for col, row, w, h in self.map.wall_rectangles:
             Entity(
-                model='cube', color=color.rgb(25, 25, 30), collider='box', texture='textures/wall_2.jpg',
+                model='cube',
+                texture='textures/wall_2.jpg',
+                shader=lit_with_shadows_shader,
                 position=((col + w / 2) * SCALE, WALL_HEIGHT / 2, (self.map.rows - row - h / 2) * SCALE),
                 scale=(w * SCALE, WALL_HEIGHT, h * SCALE),
                 texture_scale=(0.5, 0.5),
+                collider='box'
             )
 
         # Plafond
@@ -77,10 +80,16 @@ class Game:
 
         window.color = color.black
 
-        AmbientLight(color=color.rgba(10, 10, 15, 0.15))
+        AmbientLight(color=color.rgba(40, 35, 5, 0.15))
 
+        # Lumière directionnelle jaune - monte l'alpha ou RGB pour + d'intensité
+        DirectionalLight(y=20, z=-10, rotation=(45, -45, 0), color=color.rgb(80, 65, 5))
+
+        # Fog - baisse fog_density pour voir plus loin
         scene.fog_color = color.black
-        scene.fog_density = 0.4
+
+        # intervalle de 0.2 à 0.4 = top
+        scene.fog_density = 0.3
 
     def _setup_player(self):
         self.player = FirstPersonController(
