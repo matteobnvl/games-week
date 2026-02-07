@@ -41,16 +41,16 @@ class Game:
     def _build_world(self):
         # Sol
         Entity(
-            model='cube', color=color.rgb(204, 204, 204), collider='box', texture='textures/wall_2.jpg',
+            model='cube', color=color.rgb(30, 30, 35), collider='box', texture='textures/wall_2.jpg',
             position=(self.map.cols * SCALE / 2, -0.5, self.map.rows * SCALE / 2),
             scale=(self.map.cols * SCALE, 1, self.map.rows * SCALE),
-            texture_scale=(5,5),
+            texture_scale=(5, 5),
         )
 
         # Murs optimisés
         for col, row, w, h in self.map.wall_rectangles:
             Entity(
-                model='cube', color=color.dark_gray, collider='box', texture='textures/wall_2.jpg',
+                model='cube', color=color.rgb(25, 25, 30), collider='box', texture='textures/wall_2.jpg',
                 position=((col + w / 2) * SCALE, WALL_HEIGHT / 2, (self.map.rows - row - h / 2) * SCALE),
                 scale=(w * SCALE, WALL_HEIGHT, h * SCALE),
                 texture_scale=(0.5, 0.5),
@@ -58,7 +58,7 @@ class Game:
 
         # Plafond
         Entity(
-            model='cube', color=color.rgb(204, 204, 204), collider='box', texture='textures/ceiling_2.jpg',
+            model='cube', color=color.rgb(20, 20, 25), collider='box', texture='textures/ceiling_2.jpg',
             position=(self.map.cols * SCALE / 2, CEILING_HEIGHT, self.map.rows * SCALE / 2),
             scale=(self.map.cols * SCALE, 1, self.map.rows * SCALE),
             texture_scale=(50, 50),
@@ -72,11 +72,15 @@ class Game:
         )
 
     def _setup_lighting(self):
-        camera.clip_plane_far = 100
+        camera.clip_plane_far = 50
         camera.clip_plane_near = 0.1
-        Sky(color=color.rgb(135, 206, 235))
-        AmbientLight(color=color.rgba(255, 255, 255, 0.8))
-        DirectionalLight(y=20, z=-10, rotation=(45, -45, 0), color=color.rgba(255, 255, 255, 0.6))
+
+        window.color = color.black
+
+        AmbientLight(color=color.rgba(10, 10, 15, 0.15))
+
+        scene.fog_color = color.black
+        scene.fog_density = 0.4
 
     def _setup_player(self):
         self.player = FirstPersonController(
