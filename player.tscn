@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://dmv1feu8cx61g"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_sh265"]
+radius = 1.8
+height = 3.6
+
+[node name="Player" type="CharacterBody3D" unique_id=2101734542]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=184581323]
+shape = SubResource("CapsuleShape3D_sh265")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1802615380]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+current = true
+
+[node name="SpotLight3D" type="SpotLight3D" parent="Camera3D" unique_id=733407424]
+light_color = Color(1, 0.9019608, 0.5882353, 1)
+light_energy = 1.5
+shadow_enabled = true
+spot_range = 20.0
+spot_angle = 25.0

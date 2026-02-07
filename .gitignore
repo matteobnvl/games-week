@@ -1,0 +1,13 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+# Godot 4
+*.import
+*.tmp
+*.log
+*.godot/editor_settings-*.cfg
+*.godot/mono/
+
+# UID files (scene/script IDs)
+*.uid
+
