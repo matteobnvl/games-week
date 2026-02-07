@@ -41,7 +41,8 @@ class Game:
     def _build_world(self):
         # Sol
         Entity(
-            model='cube', color=color.rgb(30, 30, 35), collider='box', texture='textures/wall_2.jpg',
+            model='cube', collider='box', texture='textures/wall_2.jpg',
+            shader=lit_with_shadows_shader,
             position=(self.map.cols * SCALE / 2, -0.5, self.map.rows * SCALE / 2),
             scale=(self.map.cols * SCALE, 1, self.map.rows * SCALE),
             texture_scale=(5, 5),
@@ -61,7 +62,8 @@ class Game:
 
         # Plafond
         Entity(
-            model='cube', color=color.rgb(20, 20, 25), collider='box', texture='textures/ceiling_2.jpg',
+            model='cube', collider='box', texture='textures/ceiling_2.jpg',
+            shader=lit_with_shadows_shader,
             position=(self.map.cols * SCALE / 2, CEILING_HEIGHT, self.map.rows * SCALE / 2),
             scale=(self.map.cols * SCALE, 1, self.map.rows * SCALE),
             texture_scale=(50, 50),
@@ -77,18 +79,11 @@ class Game:
     def _setup_lighting(self):
         camera.clip_plane_far = 50
         camera.clip_plane_near = 0.1
-
         window.color = color.black
 
-        AmbientLight(color=color.rgba(40, 35, 5, 0.15))
+        AmbientLight(color=color.rgba(10, 10, 15, 0.15))
 
-        # Lumière directionnelle jaune - monte l'alpha ou RGB pour + d'intensité
-        DirectionalLight(y=20, z=-10, rotation=(45, -45, 0), color=color.rgb(80, 65, 5))
-
-        # Fog - baisse fog_density pour voir plus loin
         scene.fog_color = color.black
-
-        # intervalle de 0.2 à 0.4 = top
         scene.fog_density = 0.3
 
     def _setup_player(self):
@@ -99,6 +94,8 @@ class Game:
         )
         self.player.cursor.visible = False
         self.player.collider = BoxCollider(self.player, Vec3(0, 1, 0), Vec3(0.8, 1.8, 0.8))
+
+        self.flashlight = PointLight(parent=camera, position=(0, 0, 0), color=color.rgb(150, 120, 80))
 
     def _setup_ui(self):
         self.fps_text = Text(
