@@ -4,7 +4,7 @@ extends Node3D
 const SCALE := 0.12
 const WALL_HEIGHT := 5.0
 const THRESHOLD := 128
-const MAP_PATH := "res://map3.png"
+const MAP_PATH := "res://map_100.png"
 const WALK_SPEED := 5.0
 const SPRINT_SPEED := 9.0
 const JUMP_VELOCITY := 4.5
@@ -89,35 +89,61 @@ func _ready() -> void:
 	grid_rows = image.get_height()
 	
 	var red_grid: Array[Array] = []
+	var terrace_grid: Array[Array] = []
 	
 	for row: int in range(grid_rows):
 		var line: Array[int] = []
 		var red_line: Array[bool] = []
+		var terrace_line: Array[bool] = []
 		for col: int in range(grid_cols):
 			var pixel: Color = image.get_pixel(col, row)
 			if pixel.r > 0.8 and pixel.g < 0.3 and pixel.b < 0.3:
-				line.append(2)
+				line.append(2)  # Red = doors
 				red_line.append(true)
+				terrace_line.append(false)
+			elif pixel.b > 0.8 and pixel.r < 0.3 and pixel.g < 0.3:
+				line.append(3)  # Blue = windows
+				red_line.append(false)
+				terrace_line.append(false)
+			elif pixel.g > 0.8 and pixel.r < 0.3 and pixel.b < 0.3:
+				line.append(4)  # Green = terrace floor
+				red_line.append(false)
+				terrace_line.append(true)
+			elif pixel.r > 0.8 and pixel.g < 0.3 and pixel.b > 0.8:
+				line.append(5)  # Pink/Magenta (255,0,255) = glass fence
+				red_line.append(false)
+				terrace_line.append(false)
 			elif pixel.r < (THRESHOLD / 255.0):
-				line.append(1)
+				line.append(1)  # Dark = walls
 				red_line.append(false)
+				terrace_line.append(false)
 			else:
-				line.append(0)
+				line.append(0)  # Light = empty
 				red_line.append(false)
+				terrace_line.append(false)
 		grid_data.append(line)
 		red_grid.append(red_line)
+		terrace_grid.append(terrace_line)
 	
 	var door_blocks: Array = _find_door_blocks(red_grid, grid_rows, grid_cols)
 	var rectangles: Array = _merge_walls(grid_data, grid_rows, grid_cols)
+	var window_rects: Array = _merge_windows(grid_data, grid_rows, grid_cols)
+	var terrace_rects: Array = _merge_terraces(grid_data, grid_rows, grid_cols)
+	var fence_rects: Array = _merge_glass_fences(grid_data, grid_rows, grid_cols)
 	var spawn_grid: Vector2 = _find_spawn(grid_data, grid_rows, grid_cols)
 	spawn_position = Vector3(spawn_grid.x * SCALE, 2.0, spawn_grid.y * SCALE)
 	
 	_build_floor(grid_rows, grid_cols)
+	_build_terrace_floors(terrace_rects)
+	_build_ceiling(grid_rows, grid_cols, terrace_grid)
 	_build_walls(rectangles, grid_rows)
+	_build_windows(window_rects)
+	_build_glass_fences(fence_rects)
 	_build_doors_from_blocks(door_blocks)
+	_setup_environment()
 	_create_ui()
 	
-	print("Pret ! Murs: ", rectangles.size(), " | Portes: ", doors.size(), " | Spawn: ", spawn_position)
+	print("Pret ! Murs: ", rectangles.size(), " | Portes: ", doors.size(), " | Fenetres: ", window_rects.size(), " | Terrasses: ", terrace_rects.size(), " | Clotures: ", fence_rects.size(), " | Spawn: ", spawn_position)
 
 
 func _find_door_blocks(red_grid: Array, rows: int, cols: int) -> Array:
@@ -376,6 +402,79 @@ func _create_player() -> void:
 	print("Joueur place a : ", player.position)
 
 
+func _setup_environment() -> void:
+	var world_env := WorldEnvironment.new()
+	var env := Environment.new()
+	
+	# Background color (early night/dusk - deep blue with purple tint)
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.15, 0.18, 0.35)
+	
+	# Ambient light (twilight - blue-orange mix)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.4, 0.45, 0.6)
+	env.ambient_light_energy = 0.5
+	
+	# Volumetric Fog (lighter, bluer for dusk)
+	env.volumetric_fog_enabled = true
+	env.volumetric_fog_density = 0.015
+	env.volumetric_fog_albedo = Color(0.6, 0.65, 0.8)
+	env.volumetric_fog_emission_energy = 0.0
+	env.volumetric_fog_length = 50.0
+	env.volumetric_fog_detail_spread = 2.0
+	
+	# Adjustment (early night - brighter, less saturated)
+	env.adjustment_enabled = true
+	env.adjustment_brightness = 1.05
+	env.adjustment_contrast = 1.05
+	env.adjustment_saturation = 0.85
+	
+	world_env.environment = env
+	add_child(world_env)
+	
+	# Directional light (sunset/moonrise)
+	var sun_light := DirectionalLight3D.new()
+	sun_light.light_color = Color(1.0, 0.7, 0.5)  # Warm orange-pink sunset color
+	sun_light.light_energy = 0.6
+	sun_light.shadow_enabled = true
+	sun_light.shadow_blur = 1.5
+	
+	# Angle: low on horizon (sunset/moonrise position)
+	sun_light.rotation_degrees = Vector3(-15, -45, 0)
+	
+	add_child(sun_light)
+	
+	# Visual sun sphere
+	var sun_mesh := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 15.0
+	sphere.height = 30.0
+	sun_mesh.mesh = sphere
+	
+	# Position sun where the light comes FROM (opposite of light direction)
+	# Light rotation (-15, -45, 0) means light points in that direction
+	# Sun should be in the opposite direction
+	var distance: float = 300.0
+	var angle_h: float = deg_to_rad(-45 + 180)  # Opposite horizontal angle
+	var angle_v: float = deg_to_rad(15)  # Opposite vertical (was -15)
+	sun_mesh.position = Vector3(
+		cos(angle_h) * cos(angle_v) * distance,
+		sin(angle_v) * distance,
+		sin(angle_h) * cos(angle_v) * distance
+	)
+	
+	# Glowing material
+	var sun_mat := StandardMaterial3D.new()
+	sun_mat.emission_enabled = true
+	sun_mat.emission = Color(1.0, 0.6, 0.3)  # Orange glow
+	sun_mat.emission_energy_multiplier = 3.0
+	sun_mat.albedo_color = Color(1.0, 0.7, 0.4)
+	sun_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sun_mesh.material_override = sun_mat
+	
+	add_child(sun_mesh)
+
+
 func _create_ui() -> void:
 	var canvas := CanvasLayer.new()
 	
@@ -627,6 +726,117 @@ func _build_floor(rows: int, cols: int) -> void:
 	add_child(floor_mesh)
 	add_child(body)
 
+func _build_ceiling(rows: int, cols: int, terrace_grid: Array) -> void:
+	# Build ceiling only where there's no terrace
+	var ceiling_rects: Array = _merge_ceiling_areas(rows, cols, terrace_grid)
+	
+	for rect: Array in ceiling_rects:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		var ceiling_mesh := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(w * SCALE, 1.0, h * SCALE)
+		ceiling_mesh.mesh = box
+		ceiling_mesh.position = Vector3(
+			(col + w / 2.0) * SCALE,
+			WALL_HEIGHT + 0.5,
+			(row + h / 2.0) * SCALE
+		)
+		
+		var ceiling_texture := StandardMaterial3D.new()
+		ceiling_texture.albedo_texture = load("res://textures/ceiling_cut.jpg")
+		ceiling_texture.uv1_scale = Vector3(w / 8.0, h / 14.0, 1)
+		ceiling_mesh.material_override = ceiling_texture
+		
+		var body := StaticBody3D.new()
+		var col_shape := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = box.size
+		col_shape.shape = shape
+		body.add_child(col_shape)
+		body.position = ceiling_mesh.position
+		
+		add_child(ceiling_mesh)
+		add_child(body)
+
+
+func _build_terrace_floors(rectangles: Array) -> void:
+	for rect: Array in rectangles:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		var terrace := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(w * SCALE, 1.0, h * SCALE)
+		terrace.mesh = box
+		terrace.position = Vector3(
+			(col + w / 2.0) * SCALE,
+			-0.5,
+			(row + h / 2.0) * SCALE
+		)
+		
+		# Outdoor floor material (different from indoor)
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.35, 0.45, 0.35)  # Greenish outdoor color
+		mat.roughness = 0.9
+		terrace.material_override = mat
+		
+		var body := StaticBody3D.new()
+		var col_shape := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = box.size
+		col_shape.shape = shape
+		body.add_child(col_shape)
+		body.position = terrace.position
+		
+		add_child(terrace)
+		add_child(body)
+
+
+func _build_glass_fences(rectangles: Array) -> void:
+	for rect: Array in rectangles:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		var fence := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		var fence_height: float = WALL_HEIGHT * 0.3  # Half wall height
+		box.size = Vector3(w * SCALE, fence_height, h * SCALE)
+		fence.mesh = box
+		fence.position = Vector3(
+			(col + w / 2.0) * SCALE,
+			fence_height / 2.0,
+			(row + h / 2.0) * SCALE
+		)
+		
+		# Transparent glass material
+		var glass_mat := StandardMaterial3D.new()
+		glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		glass_mat.albedo_color = Color(1.0, 0.5, 0.75, 0.4)  # Light pink, 40% opacity
+		glass_mat.metallic = 0.1
+		glass_mat.roughness = 0.05
+		glass_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		fence.material_override = glass_mat
+		
+		# Collision body
+		var body := StaticBody3D.new()
+		var col_shape := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = box.size
+		col_shape.shape = shape
+		body.add_child(col_shape)
+		body.position = fence.position
+		
+		add_child(fence)
+		add_child(body)
+
 
 func _build_walls(rectangles: Array, rows: int) -> void:
 	for rect: Array in rectangles:
@@ -658,6 +868,45 @@ func _build_walls(rectangles: Array, rows: int) -> void:
 		body.position = wall.position
 		
 		add_child(wall)
+		add_child(body)
+
+
+func _build_windows(rectangles: Array) -> void:
+	for rect: Array in rectangles:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		var window := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(w * SCALE, WALL_HEIGHT, h * SCALE)
+		window.mesh = box
+		window.position = Vector3(
+			(col + w / 2.0) * SCALE,
+			WALL_HEIGHT / 2.0,
+			(row + h / 2.0) * SCALE
+		)
+		
+		# Transparent glass material
+		var glass_mat := StandardMaterial3D.new()
+		glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		glass_mat.albedo_color = Color(0.7, 0.85, 1.0, 0.3)  # Light blue, 30% opacity
+		glass_mat.metallic = 0.0
+		glass_mat.roughness = 0.1
+		glass_mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # Visible from both sides
+		window.material_override = glass_mat
+		
+		# Collision body (not walkable)
+		var body := StaticBody3D.new()
+		var col_shape := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = box.size
+		col_shape.shape = shape
+		body.add_child(col_shape)
+		body.position = window.position
+		
+		add_child(window)
 		add_child(body)
 
 
@@ -717,6 +966,179 @@ func _merge_walls(grid: Array, rows: int, cols: int) -> Array:
 				var full_row: bool = true
 				for c: int in range(col, col + width):
 					if c >= cols or grid[r][c] != 1 or visited[r][c]:
+						full_row = false
+						break
+				if full_row:
+					height += 1
+				else:
+					break
+			
+			for r: int in range(row, row + height):
+				for c: int in range(col, col + width):
+					visited[r][c] = true
+			
+			rectangles.append([col, row, width, height])
+	
+	return rectangles
+
+
+func _merge_windows(grid: Array, rows: int, cols: int) -> Array:
+	var visited: Array[Array] = []
+	for row: int in range(rows):
+		var line: Array[bool] = []
+		line.resize(cols)
+		line.fill(false)
+		visited.append(line)
+	
+	var rectangles: Array = []
+	
+	for row: int in range(rows):
+		for col: int in range(cols):
+			if grid[row][col] != 3 or visited[row][col]:
+				continue
+			
+			var width: int = 0
+			for c: int in range(col, cols):
+				if grid[row][c] == 3 and not visited[row][c]:
+					width += 1
+				else:
+					break
+			
+			var height: int = 0
+			for r: int in range(row, rows):
+				var full_row: bool = true
+				for c: int in range(col, col + width):
+					if c >= cols or grid[r][c] != 3 or visited[r][c]:
+						full_row = false
+						break
+				if full_row:
+					height += 1
+				else:
+					break
+			
+			for r: int in range(row, row + height):
+				for c: int in range(col, col + width):
+					visited[r][c] = true
+			
+			rectangles.append([col, row, width, height])
+	
+	return rectangles
+
+
+func _merge_terraces(grid: Array, rows: int, cols: int) -> Array:
+	var visited: Array[Array] = []
+	for row: int in range(rows):
+		var line: Array[bool] = []
+		line.resize(cols)
+		line.fill(false)
+		visited.append(line)
+	
+	var rectangles: Array = []
+	
+	for row: int in range(rows):
+		for col: int in range(cols):
+			if grid[row][col] != 4 or visited[row][col]:
+				continue
+			
+			var width: int = 0
+			for c: int in range(col, cols):
+				if grid[row][c] == 4 and not visited[row][c]:
+					width += 1
+				else:
+					break
+			
+			var height: int = 0
+			for r: int in range(row, rows):
+				var full_row: bool = true
+				for c: int in range(col, col + width):
+					if c >= cols or grid[r][c] != 4 or visited[r][c]:
+						full_row = false
+						break
+				if full_row:
+					height += 1
+				else:
+					break
+			
+			for r: int in range(row, row + height):
+				for c: int in range(col, col + width):
+					visited[r][c] = true
+			
+			rectangles.append([col, row, width, height])
+	
+	return rectangles
+
+
+func _merge_glass_fences(grid: Array, rows: int, cols: int) -> Array:
+	var visited: Array[Array] = []
+	for row: int in range(rows):
+		var line: Array[bool] = []
+		line.resize(cols)
+		line.fill(false)
+		visited.append(line)
+	
+	var rectangles: Array = []
+	
+	for row: int in range(rows):
+		for col: int in range(cols):
+			if grid[row][col] != 5 or visited[row][col]:
+				continue
+			
+			var width: int = 0
+			for c: int in range(col, cols):
+				if grid[row][c] == 5 and not visited[row][c]:
+					width += 1
+				else:
+					break
+			
+			var height: int = 0
+			for r: int in range(row, rows):
+				var full_row: bool = true
+				for c: int in range(col, col + width):
+					if c >= cols or grid[r][c] != 5 or visited[r][c]:
+						full_row = false
+						break
+				if full_row:
+					height += 1
+				else:
+					break
+			
+			for r: int in range(row, row + height):
+				for c: int in range(col, col + width):
+					visited[r][c] = true
+			
+			rectangles.append([col, row, width, height])
+	
+	return rectangles
+
+
+func _merge_ceiling_areas(rows: int, cols: int, terrace_grid: Array) -> Array:
+	# Create ceiling areas avoiding terrace zones
+	var visited: Array[Array] = []
+	for row: int in range(rows):
+		var line: Array[bool] = []
+		line.resize(cols)
+		line.fill(false)
+		visited.append(line)
+	
+	var rectangles: Array = []
+	
+	for row: int in range(rows):
+		for col: int in range(cols):
+			if terrace_grid[row][col] or visited[row][col]:
+				continue
+			
+			var width: int = 0
+			for c: int in range(col, cols):
+				if not terrace_grid[row][c] and not visited[row][c]:
+					width += 1
+				else:
+					break
+			
+			var height: int = 0
+			for r: int in range(row, rows):
+				var full_row: bool = true
+				for c: int in range(col, col + width):
+					if c >= cols or terrace_grid[r][c] or visited[r][c]:
 						full_row = false
 						break
 				if full_row:
