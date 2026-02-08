@@ -113,6 +113,7 @@ func _ready() -> void:
 	spawn_position = Vector3(spawn_grid.x * SCALE, 2.0, spawn_grid.y * SCALE)
 	
 	_build_floor(grid_rows, grid_cols)
+	_build_ceiling(grid_rows, grid_cols)
 	_build_walls(rectangles, grid_rows)
 	_build_doors_from_blocks(door_blocks)
 	_create_ui()
@@ -612,9 +613,11 @@ func _build_floor(rows: int, cols: int) -> void:
 	floor_mesh.mesh = box
 	floor_mesh.position = Vector3(cols * SCALE / 2.0, -0.5, rows * SCALE / 2.0)
 	
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.3, 0.3, 0.3)
-	floor_mesh.material_override = mat
+	var floor_texture := StandardMaterial3D.new()
+	
+	floor_texture.albedo_texture = load("res://textures/floor.jpg")
+	floor_texture.uv1_scale = Vector3(15, 15, 1)
+	floor_mesh.material_override = floor_texture
 	
 	var body := StaticBody3D.new()
 	var col_shape := CollisionShape3D.new()
@@ -625,6 +628,30 @@ func _build_floor(rows: int, cols: int) -> void:
 	body.position = floor_mesh.position
 	
 	add_child(floor_mesh)
+	add_child(body)
+
+
+func _build_ceiling(rows: int, cols: int) -> void:
+	var ceiling_mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(cols * SCALE, 1.0, rows * SCALE)
+	ceiling_mesh.mesh = box
+	ceiling_mesh.position = Vector3(cols * SCALE / 2.0, WALL_HEIGHT + 0.5, rows * SCALE / 2.0)
+	
+	var ceiling_texture := StandardMaterial3D.new()
+	ceiling_texture.albedo_texture = load("res://textures/ceiling_cut.jpg")
+	ceiling_texture.uv1_scale = Vector3(cols / 8, rows / 14, 1)
+	ceiling_mesh.material_override = ceiling_texture
+	
+	var body := StaticBody3D.new()
+	var col_shape := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = box.size
+	col_shape.shape = shape
+	body.add_child(col_shape)
+	body.position = ceiling_mesh.position
+	
+	add_child(ceiling_mesh)
 	add_child(body)
 
 
@@ -645,9 +672,9 @@ func _build_walls(rectangles: Array, rows: int) -> void:
 			(row + h / 2.0) * SCALE
 		)
 		
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.45, 0.45, 0.5)
-		wall.material_override = mat
+		var wall_texture := StandardMaterial3D.new()
+		wall_texture.albedo_texture = load("res://textures/wall.jpg")
+		wall.material_override = wall_texture
 		
 		var body := StaticBody3D.new()
 		var col_shape := CollisionShape3D.new()
