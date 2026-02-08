@@ -113,6 +113,10 @@ func _ready() -> void:
 				line.append(5)  # Pink/Magenta (255,0,255) = glass fence
 				red_line.append(false)
 				terrace_line.append(false)
+			elif pixel.r < 0.3 and pixel.g > 0.8 and pixel.b > 0.8:
+				line.append(6)  # Cyan (0,255,255) = coffee machine
+				red_line.append(false)
+				terrace_line.append(false)
 			elif pixel.r < (THRESHOLD / 255.0):
 				line.append(1)  # Dark = walls
 				red_line.append(false)
@@ -130,6 +134,7 @@ func _ready() -> void:
 	var window_rects: Array = _merge_windows(grid_data, grid_rows, grid_cols)
 	var terrace_rects: Array = _merge_terraces(grid_data, grid_rows, grid_cols)
 	var fence_rects: Array = _merge_glass_fences(grid_data, grid_rows, grid_cols)
+	var coffee_machines: Array = _merge_coffee_machines(grid_data, grid_rows, grid_cols)
 	var spawn_grid: Vector2 = _find_spawn(grid_data, grid_rows, grid_cols)
 	spawn_position = Vector3(spawn_grid.x * SCALE, 2.0, spawn_grid.y * SCALE)
 	
@@ -139,11 +144,12 @@ func _ready() -> void:
 	_build_walls(rectangles, grid_rows)
 	_build_windows(window_rects)
 	_build_glass_fences(fence_rects)
+	_build_coffee_machines(coffee_machines)
 	_build_doors_from_blocks(door_blocks)
 	_setup_environment()
 	_create_ui()
 	
-	print("Pret ! Murs: ", rectangles.size(), " | Portes: ", doors.size(), " | Fenetres: ", window_rects.size(), " | Terrasses: ", terrace_rects.size(), " | Clotures: ", fence_rects.size(), " | Spawn: ", spawn_position)
+	print("Pret ! Murs: ", rectangles.size(), " | Portes: ", doors.size(), " | Fenetres: ", window_rects.size(), " | Terrasses: ", terrace_rects.size(), " | Clotures: ", fence_rects.size(), " | Machines: ", coffee_machines.size(), " | Spawn: ", spawn_position)
 
 
 func _find_door_blocks(red_grid: Array, rows: int, cols: int) -> Array:
@@ -838,6 +844,51 @@ func _build_glass_fences(rectangles: Array) -> void:
 		add_child(body)
 
 
+func _build_coffee_machines(rectangles: Array) -> void:
+	for rect: Array in rectangles:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		# Small box for coffee machine
+		var machine := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		var machine_height: float = WALL_HEIGHT * 0.7
+		box.size = Vector3(w * SCALE, machine_height, h * SCALE)
+		machine.mesh = box
+		machine.position = Vector3(
+			(col + w / 2.0) * SCALE,
+			machine_height / 2.0,
+			(row + h / 2.0) * SCALE
+		)
+		
+		# Cyan colored material
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.0, 0.8, 0.9)
+		mat.metallic = 0.6
+		mat.roughness = 0.3
+		machine.material_override = mat
+		
+		add_child(machine)
+		
+		# Blue spotlight from the screen (front face of machine)
+		var light := SpotLight3D.new()
+		light.light_color = Color(0.3, 0.7, 1.0)  # Bright blue
+		light.light_energy = 20.0
+		light.spot_range = 15.0
+		light.spot_angle = 45.0
+		light.shadow_enabled = true
+		light.position = Vector3(
+			col * SCALE + w * SCALE * 0.5,
+			machine_height / 2.0,
+			row * SCALE - h * SCALE / 2.0  # Position in front of machine
+		)
+		# Point the light forward (negative Z direction)
+		light.rotation_degrees = Vector3(0, 0, 0)
+		
+		add_child(light)
+
 func _build_walls(rectangles: Array, rows: int) -> void:
 	for rect: Array in rectangles:
 		var col: int = rect[0]
@@ -1095,6 +1146,49 @@ func _merge_glass_fences(grid: Array, rows: int, cols: int) -> Array:
 				var full_row: bool = true
 				for c: int in range(col, col + width):
 					if c >= cols or grid[r][c] != 5 or visited[r][c]:
+						full_row = false
+						break
+				if full_row:
+					height += 1
+				else:
+					break
+			
+			for r: int in range(row, row + height):
+				for c: int in range(col, col + width):
+					visited[r][c] = true
+			
+			rectangles.append([col, row, width, height])
+	
+	return rectangles
+
+
+func _merge_coffee_machines(grid: Array, rows: int, cols: int) -> Array:
+	var visited: Array[Array] = []
+	for row: int in range(rows):
+		var line: Array[bool] = []
+		line.resize(cols)
+		line.fill(false)
+		visited.append(line)
+	
+	var rectangles: Array = []
+	
+	for row: int in range(rows):
+		for col: int in range(cols):
+			if grid[row][col] != 6 or visited[row][col]:
+				continue
+			
+			var width: int = 0
+			for c: int in range(col, cols):
+				if grid[row][c] == 6 and not visited[row][c]:
+					width += 1
+				else:
+					break
+			
+			var height: int = 0
+			for r: int in range(row, rows):
+				var full_row: bool = true
+				for c: int in range(col, col + width):
+					if c >= cols or grid[r][c] != 6 or visited[r][c]:
 						full_row = false
 						break
 				if full_row:
