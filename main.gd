@@ -5,6 +5,7 @@ var player: PlayerController
 var game_ui: GameUI
 var world_builder: WorldBuilder
 var puzzle_manager: PuzzleManager
+var enemy: EnemyController
 
 var doors: Array = []
 var grid_data: Array[Array] = []
@@ -16,6 +17,8 @@ var room_positions: Array = []
 
 var player_spawned := false
 var frames_before_spawn := 3
+var game_over := false
+var ambient_music: AudioStreamPlayer
 
 
 func _ready() -> void:
@@ -93,6 +96,8 @@ func _process(delta: float) -> void:
 		frames_before_spawn -= 1
 		if frames_before_spawn <= 0:
 			_spawn_player()
+			_spawn_enemy()
+			_start_ambient_music()
 			player_spawned = true
 
 	# Animate doors
@@ -106,7 +111,7 @@ func _process(delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not player:
+	if not player or game_over:
 		return
 
 	# Freeze player during quiz or win
@@ -225,3 +230,79 @@ func _spawn_player() -> void:
 	player.position = spawn_position
 	add_child(player)
 	print("Player spawned at: ", player.position)
+
+
+func _spawn_enemy() -> void:
+	# Find a spawn point far from the player
+	var best_pos := Vector3.ZERO
+	var best_dist: float = 0
+	for pos: Vector3 in room_positions:
+		var d: float = pos.distance_to(spawn_position)
+		if d > GameConfig.ENEMY_SPAWN_MIN_DIST and d > best_dist:
+			best_dist = d
+			best_pos = pos
+	if best_pos == Vector3.ZERO and room_positions.size() > 0:
+		best_pos = room_positions[room_positions.size() - 1]
+
+	enemy = EnemyController.new()
+	enemy.model_path = GameConfig.ENEMY2_MODEL_PATH
+	enemy.model_scale = GameConfig.ENEMY2_MODEL_SCALE
+	enemy.model_y_offset = GameConfig.ENEMY2_MODEL_Y_OFFSET
+	enemy.anim_walk = GameConfig.ENEMY2_MODEL_WALK_ANIMATION
+	enemy.anim_run = GameConfig.ENEMY2_MODEL_RUN_ANIMATION
+	enemy.anim_attack = GameConfig.ENEMY2_MODEL_ATTACK_ANIMATION
+	enemy.anim_idle = GameConfig.ENEMY2_MODEL_IDLE_ANIMATION
+	enemy.anim_scream = GameConfig.ENEMY2_MODEL_SCREAM_ANIMATION
+	enemy.position = Vector3(best_pos.x, 2.0, best_pos.z)
+	add_child(enemy)
+
+	var waypoints: Array = []
+	for i: int in range(mini(room_positions.size(), 15)):
+		waypoints.append(room_positions[i])
+	enemy.setup(grid_data, grid_rows, grid_cols, waypoints, player, doors)
+	enemy.caught_player.connect(_on_player_caught)
+	print("Enemy (funny_fear) spawned at: ", enemy.position)
+
+
+func _on_player_caught() -> void:
+	if game_over:
+		return
+	game_over = true
+	player.movement_enabled = false
+	if ambient_music and ambient_music.playing:
+		ambient_music.stop()
+	game_ui.show_game_over()
+	print("GAME OVER - Felipe caught you!")
+
+
+func _start_ambient_music() -> void:
+	var paths: Array = GameConfig.AMBIENT_MUSIC_PATHS
+	if paths.is_empty():
+		return
+	var chosen_path: String = paths[randi() % paths.size()]
+	if not ResourceLoader.exists(chosen_path):
+		print("Ambient music not found: ", chosen_path)
+		return
+	ambient_music = AudioStreamPlayer.new()
+	var music: Resource = load(chosen_path)
+	if music:
+		ambient_music.stream = music
+		ambient_music.volume_db = -10.0
+		ambient_music.bus = "Master"
+		add_child(ambient_music)
+		ambient_music.finished.connect(_on_ambient_music_finished)
+		ambient_music.play()
+		print("Ambient music: ", chosen_path)
+
+
+func _on_ambient_music_finished() -> void:
+	if game_over or not ambient_music:
+		return
+	# Pick a new random track and play it
+	var paths: Array = GameConfig.AMBIENT_MUSIC_PATHS
+	var chosen_path: String = paths[randi() % paths.size()]
+	if ResourceLoader.exists(chosen_path):
+		var music: Resource = load(chosen_path)
+		if music:
+			ambient_music.stream = music
+			ambient_music.play()

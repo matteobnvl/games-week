@@ -221,3 +221,44 @@ func show_interact(text: String) -> void:
 
 func hide_interact() -> void:
 	interact_label.visible = false
+
+
+# ---------------------------------------------------------------------------
+# Game Over
+# ---------------------------------------------------------------------------
+
+func show_game_over() -> void:
+	var overlay := ColorRect.new()
+	overlay.color = Color(0.3, 0.0, 0.0, 0.0)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.z_index = 100
+	add_child(overlay)
+
+	var death_label := Label.new()
+	death_label.text = "FELIPE T'A ATTRAPE..."
+	death_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	death_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	death_label.set_anchors_preset(Control.PRESET_CENTER)
+	death_label.add_theme_font_size_override("font_size", 52)
+	death_label.add_theme_color_override("font_color", Color(0.9, 0.1, 0.1))
+	death_label.modulate.a = 0.0
+	death_label.z_index = 101
+	add_child(death_label)
+
+	var subtitle := Label.new()
+	subtitle.text = "Tu n'aurais pas du faire de bruit..."
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.set_anchors_preset(Control.PRESET_CENTER)
+	subtitle.position.y = 50
+	subtitle.add_theme_font_size_override("font_size", 22)
+	subtitle.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+	subtitle.modulate.a = 0.0
+	subtitle.z_index = 101
+	add_child(subtitle)
+
+	var tween := create_tween()
+	tween.tween_property(overlay, "color:a", 0.9, 1.5)
+	tween.parallel().tween_property(death_label, "modulate:a", 1.0, 1.5)
+	tween.tween_property(subtitle, "modulate:a", 1.0, 1.0)
+	tween.tween_interval(3.0)
+	tween.tween_callback(func() -> void: get_tree().change_scene_to_file("res://menu.tscn"))
