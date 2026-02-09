@@ -1,5 +1,9 @@
 extends Control
 
+const MENU_MUSIC_PATH := "res://menu_music.ogg"
+
+var music_player: AudioStreamPlayer
+
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -17,7 +21,7 @@ func _ready() -> void:
 	add_child(vbox)
 	
 	var title := Label.new()
-	title.text = "LABYRINTHE"
+	title.text = "ESCAPE EFREI"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 48)
 	title.add_theme_color_override("font_color", Color.WHITE)
@@ -40,15 +44,41 @@ func _ready() -> void:
 	play_btn.pressed.connect(_on_play)
 	vbox.add_child(play_btn)
 	
+	var skip_btn := Button.new()
+	skip_btn.text = "JOUER (SKIP INTRO)"
+	skip_btn.custom_minimum_size = Vector2(300, 55)
+	skip_btn.pressed.connect(_on_skip)
+	vbox.add_child(skip_btn)
+	
 	var quit_btn := Button.new()
 	quit_btn.text = "QUITTER"
 	quit_btn.custom_minimum_size = Vector2(300, 55)
 	quit_btn.pressed.connect(_on_quit)
 	vbox.add_child(quit_btn)
+	
+	# Musique d'ambiance
+	music_player = AudioStreamPlayer.new()
+	if ResourceLoader.exists(MENU_MUSIC_PATH):
+		music_player.stream = load(MENU_MUSIC_PATH)
+	music_player.volume_db = -3.0
+	music_player.autoplay = true
+	add_child(music_player)
+	
+	music_player.finished.connect(_on_music_finished)
+
+
+func _on_music_finished() -> void:
+	music_player.play()
 
 
 func _on_play() -> void:
+	music_player.stop()
 	get_tree().change_scene_to_file("res://cinematic.tscn")
+
+
+func _on_skip() -> void:
+	music_player.stop()
+	get_tree().change_scene_to_file("res://main.tscn")
 
 
 func _on_quit() -> void:
