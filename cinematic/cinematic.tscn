@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://vw420utyvxlq"]
 
-[ext_resource type="Script" uid="uid://b4kb6xtxqemky" path="res://cinematic.gd" id="1_oe414"]
+[ext_resource type="Script" uid="uid://b4kb6xtxqemky" path="res://cinematic/cinematic.gd" id="1_oe414"]
 
 [node name="Cinematic" type="Control" unique_id=460250860]
 clip_contents = true

@@ -1,6 +1,6 @@
 extends Control
 
-const MENU_MUSIC_PATH := "res://menu_music.ogg"
+const MENU_MUSIC_PATH := "res://songs/menu_music.ogg"
 
 var music_player: AudioStreamPlayer
 
@@ -73,7 +73,7 @@ func _on_music_finished() -> void:
 
 func _on_play() -> void:
 	music_player.stop()
-	get_tree().change_scene_to_file("res://cinematic.tscn")
+	get_tree().change_scene_to_file("res://cinematic/cinematic.tscn")
 
 
 func _on_skip() -> void:
