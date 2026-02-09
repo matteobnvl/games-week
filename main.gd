@@ -42,8 +42,26 @@ func _ready() -> void:
 	var spawn_grid: Vector2 = MapParser.find_spawn(grid_data, grid_rows, grid_cols)
 	spawn_position = Vector3(spawn_grid.x * GameConfig.SCALE, 2.0, spawn_grid.y * GameConfig.SCALE)
 
-	# --- Room positions for puzzle objects ---
+	# --- Room positions for puzzle objects (floor 1 + floor 2) ---
 	room_positions = MapParser.find_room_positions(grid_data, grid_rows, grid_cols, spawn_position)
+
+	# Also scan floor 2 for room positions
+	var f2_room_data := MapParser.parse_floor2_image(GameConfig.MAP_PATH_F2)
+	if not f2_room_data.is_empty():
+		var f2_room_grid: Array = f2_room_data["grid"]
+		var f2_void_grid: Array = f2_room_data["void_grid"]
+		var f2_r: int = f2_room_data["rows"]
+		var f2_c: int = f2_room_data["cols"]
+		# Mark void areas as walls so they're excluded from room search
+		for r: int in range(f2_r):
+			for c: int in range(f2_c):
+				if f2_void_grid[r][c]:
+					f2_room_grid[r][c] = 1
+		var f2_positions: Array = MapParser.find_room_positions(
+			f2_room_grid, f2_r, f2_c, spawn_position, GameConfig.FLOOR_2_HEIGHT + 0.5)
+		room_positions.append_array(f2_positions)
+	room_positions.shuffle()
+	print("Total room positions (N1+N2): ", room_positions.size())
 
 	# --- Build world geometry ---
 	world_builder = WorldBuilder.new()
@@ -118,6 +136,7 @@ func _physics_process(delta: float) -> void:
 		puzzle_manager.has_uv_lamp,
 		puzzle_manager.strobe_active,
 		puzzle_manager.has_strobe,
+		puzzle_manager.picked_strobe_is_real,
 	)
 	_update_ui()
 
@@ -152,6 +171,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				if not player.is_recharging:
 					player.flashlight_on = not player.flashlight_on
 					player.flashlight.visible = player.flashlight_on and player.battery > 0
+					if player.flashlight_on and player.battery <= 0:
+						game_ui.show_message("Batterie vide ! [R] pour recharger")
 			KEY_G:
 				puzzle_manager.toggle_uv()
 			KEY_H:

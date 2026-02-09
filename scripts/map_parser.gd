@@ -298,9 +298,9 @@ static func detect_orientation(grid_data: Array, grid_rows: int, grid_cols: int,
 
 
 ## Scan the grid for open areas suitable for placing objects.
-static func find_room_positions(grid_data: Array, grid_rows: int, grid_cols: int, spawn_position: Vector3) -> Array:
+static func find_room_positions(grid_data: Array, grid_rows: int, grid_cols: int, spawn_position: Vector3, height: float = 0.5) -> Array:
 	var positions: Array = []
-	var step: int = 40
+	var step: int = 25
 	var s: float = GameConfig.SCALE
 	var spawn_gx: int = int(spawn_position.x / s)
 	var spawn_gz: int = int(spawn_position.z / s)
@@ -308,8 +308,8 @@ static func find_room_positions(grid_data: Array, grid_rows: int, grid_cols: int
 	for gz: int in range(step, grid_rows - step, step):
 		for gx: int in range(step, grid_cols - step, step):
 			var open := true
-			for dz: int in range(-3, 4):
-				for dx: int in range(-3, 4):
+			for dz: int in range(-2, 3):
+				for dx: int in range(-2, 3):
 					var cx: int = gx + dx
 					var cz: int = gz + dz
 					if cx < 0 or cx >= grid_cols or cz < 0 or cz >= grid_rows:
@@ -322,9 +322,9 @@ static func find_room_positions(grid_data: Array, grid_rows: int, grid_cols: int
 					break
 			if not open:
 				continue
-			if Vector2(gx, gz).distance_to(Vector2(spawn_gx, spawn_gz)) < 60:
+			if Vector2(gx, gz).distance_to(Vector2(spawn_gx, spawn_gz)) < 40:
 				continue
-			positions.append(Vector3(gx * s, 0.5, gz * s))
+			positions.append(Vector3(gx * s, height, gz * s))
 
 	positions.shuffle()
 	return positions
