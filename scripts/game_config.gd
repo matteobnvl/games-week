@@ -70,6 +70,10 @@ const ENEMY_LIGHT_DETECTION_MULT := 1.5    # Flashlight attracts more than foots
 const ENEMY_SOUND_SPRINT_RADIUS := 20.0    # Radius of sprinting noise
 const ENEMY_SOUND_WALK_RADIUS := 8.0       # Radius of walking noise
 const ENEMY_SPAWN_MIN_DIST := 40.0         # Minimum spawn distance from player
+const ENEMY_GROWL_SOUND_PATH := "res://songs/monster-growl_with-reverb.wav"
+const ENEMY_FIND_GROWL_SOUND_PATH := "res://songs/monster-growl-find-me.wav"
+const ENEMY_GROWL_INTERVAL_MIN := 8.0      # Min seconds between random growls
+const ENEMY_GROWL_INTERVAL_MAX := 20.0     # Max seconds between random growls
 
 # --- Enemy 2 (Funny Fear) ---
 const ENEMY2_MODEL_PATH := "res://characters/funny_fear_p2_rig.glb"

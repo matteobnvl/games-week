@@ -22,6 +22,11 @@ var ambient_music: AudioStreamPlayer
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+	# --- Setup audio buses ---
+	_setup_audio_buses()
+
 	# --- Parse map ---
 	var map_data := MapParser.parse_image(GameConfig.MAP_PATH)
 	if map_data.is_empty():
@@ -50,6 +55,7 @@ func _ready() -> void:
 
 	# --- Build world geometry ---
 	world_builder = WorldBuilder.new()
+	world_builder.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(world_builder)
 
 	world_builder.build_floor(grid_rows, grid_cols)
@@ -76,10 +82,12 @@ func _ready() -> void:
 
 	# --- UI ---
 	game_ui = GameUI.new()
+	game_ui.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(game_ui)
 
 	# --- Puzzles ---
 	puzzle_manager = PuzzleManager.new()
+	puzzle_manager.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(puzzle_manager)
 	puzzle_manager.setup(room_positions, spawn_position, game_ui)
 
@@ -91,6 +99,10 @@ func _ready() -> void:
 # ---------------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	# Don't run game logic while paused
+	if get_tree().paused:
+		return
+
 	# Delayed player spawn (wait a few frames for physics to settle)
 	if not player_spawned:
 		frames_before_spawn -= 1
@@ -111,7 +123,7 @@ func _process(delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if not player or game_over:
+	if not player or game_over or get_tree().paused:
 		return
 
 	# Freeze player during quiz or win
@@ -132,6 +144,16 @@ func _physics_process(delta: float) -> void:
 # ---------------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Allow pause toggle even while paused
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		if not puzzle_manager.quiz_active:
+			_toggle_pause_menu()
+			return
+	
+	# Block all other input while paused
+	if get_tree().paused:
+		return
+
 	if not player:
 		return
 
@@ -148,11 +170,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Key presses
 	if event is InputEventKey and event.pressed:
 		match event.keycode:
-			KEY_ESCAPE:
-				if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-					Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-				else:
-					Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 			KEY_F:
 				if not player.is_recharging:
 					player.flashlight_on = not player.flashlight_on
@@ -228,6 +245,7 @@ func _update_ui() -> void:
 func _spawn_player() -> void:
 	player = PlayerController.new()
 	player.position = spawn_position
+	player.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(player)
 	print("Player spawned at: ", player.position)
 
@@ -254,6 +272,7 @@ func _spawn_enemy() -> void:
 	enemy.anim_idle = GameConfig.ENEMY2_MODEL_IDLE_ANIMATION
 	enemy.anim_scream = GameConfig.ENEMY2_MODEL_SCREAM_ANIMATION
 	enemy.position = Vector3(best_pos.x, 2.0, best_pos.z)
+	enemy.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(enemy)
 
 	var waypoints: Array = []
@@ -284,11 +303,12 @@ func _start_ambient_music() -> void:
 		print("Ambient music not found: ", chosen_path)
 		return
 	ambient_music = AudioStreamPlayer.new()
+	ambient_music.process_mode = Node.PROCESS_MODE_PAUSABLE
 	var music: Resource = load(chosen_path)
 	if music:
 		ambient_music.stream = music
 		ambient_music.volume_db = -10.0
-		ambient_music.bus = "Master"
+		ambient_music.bus = "Music"
 		add_child(ambient_music)
 		ambient_music.finished.connect(_on_ambient_music_finished)
 		ambient_music.play()
@@ -306,3 +326,33 @@ func _on_ambient_music_finished() -> void:
 		if music:
 			ambient_music.stream = music
 			ambient_music.play()
+
+
+# ---------------------------------------------------------------------------
+# Audio buses
+# ---------------------------------------------------------------------------
+
+var _pause_open := false
+
+func _setup_audio_buses() -> void:
+	# Create buses: Music, Monster, Environment (all routed to Master)
+	for bus_name: String in ["Music", "Monster", "Environment"]:
+		if AudioServer.get_bus_index(bus_name) == -1:
+			AudioServer.add_bus()
+			var idx: int = AudioServer.bus_count - 1
+			AudioServer.set_bus_name(idx, bus_name)
+			AudioServer.set_bus_send(idx, "Master")
+
+
+func _toggle_pause_menu() -> void:
+	if game_over:
+		return
+	_pause_open = not _pause_open
+	if _pause_open:
+		get_tree().paused = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		game_ui.show_pause_menu()
+	else:
+		game_ui.hide_pause_menu()
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		get_tree().paused = false

@@ -51,6 +51,9 @@ var _current_anim: String = ""
 var _stuck_timer: float = 0.0
 var _last_pos := Vector3.ZERO
 var _stuck_count: int = 0
+var _growl_audio: AudioStreamPlayer3D = null
+var _find_growl_audio: AudioStreamPlayer3D = null
+var _growl_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -110,6 +113,25 @@ func _ready() -> void:
 
 	floor_max_angle = deg_to_rad(60.0)
 
+	# Growl sounds (3D so player hears them spatially)
+	_growl_audio = AudioStreamPlayer3D.new()
+	if ResourceLoader.exists(GameConfig.ENEMY_GROWL_SOUND_PATH):
+		_growl_audio.stream = load(GameConfig.ENEMY_GROWL_SOUND_PATH)
+	_growl_audio.volume_db = 5.0
+	_growl_audio.max_distance = 40.0
+	_growl_audio.bus = "Monster"
+	add_child(_growl_audio)
+
+	_find_growl_audio = AudioStreamPlayer3D.new()
+	if ResourceLoader.exists(GameConfig.ENEMY_FIND_GROWL_SOUND_PATH):
+		_find_growl_audio.stream = load(GameConfig.ENEMY_FIND_GROWL_SOUND_PATH)
+	_find_growl_audio.volume_db = 8.0
+	_find_growl_audio.max_distance = 50.0
+	_find_growl_audio.bus = "Monster"
+	add_child(_find_growl_audio)
+
+	_growl_timer = randf_range(GameConfig.ENEMY_GROWL_INTERVAL_MIN, GameConfig.ENEMY_GROWL_INTERVAL_MAX)
+
 
 ## Initialize with map data and patrol waypoints.
 func setup(grid: Array[Array], rows: int, cols: int, waypoints: Array, player: PlayerController, game_doors: Array = []) -> void:
@@ -134,6 +156,13 @@ func _physics_process(delta: float) -> void:
 	# Door cooldown
 	if _door_open_cooldown > 0:
 		_door_open_cooldown -= delta
+
+	# Random growl timer
+	_growl_timer -= delta
+	if _growl_timer <= 0:
+		if _growl_audio and _growl_audio.stream and not _growl_audio.playing:
+			_growl_audio.play()
+		_growl_timer = randf_range(GameConfig.ENEMY_GROWL_INTERVAL_MIN, GameConfig.ENEMY_GROWL_INTERVAL_MAX)
 
 	# Detect player stimuli
 	_detect_player(delta)
@@ -388,6 +417,9 @@ func _catch_player() -> void:
 	velocity.x = 0
 	velocity.z = 0
 	_play_anim(anim_attack)
+	# Play the find-me growl
+	if _find_growl_audio and _find_growl_audio.stream:
+		_find_growl_audio.play()
 	# Signal to main to trigger game over
 	caught_player.emit()
 

@@ -55,6 +55,7 @@ func _ready() -> void:
 		if step_sound:
 			footstep_audio.stream = step_sound
 	footstep_audio.volume_db = -5.0
+	footstep_audio.bus = "Environment"
 	add_child(footstep_audio)
 
 	# Ratchet sound (flashlight recharge)
@@ -64,6 +65,7 @@ func _ready() -> void:
 		if ratchet_sound:
 			ratchet_audio.stream = ratchet_sound
 	ratchet_audio.volume_db = -3.0
+	ratchet_audio.bus = "Environment"
 	add_child(ratchet_audio)
 
 	# Heavy breathing (after sprinting)
@@ -73,6 +75,7 @@ func _ready() -> void:
 		if breath_sound:
 			breathing_audio.stream = breath_sound
 	breathing_audio.volume_db = 0.0
+	breathing_audio.bus = "Environment"
 	add_child(breathing_audio)
 
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
