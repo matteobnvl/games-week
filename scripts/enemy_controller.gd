@@ -55,6 +55,16 @@ var _growl_audio: AudioStreamPlayer3D = null
 var _find_growl_audio: AudioStreamPlayer3D = null
 var _growl_timer: float = 0.0
 
+# Smart steering
+var _wall_follow_dir: float = 1.0   # 1.0 = try right, -1.0 = try left
+var _door_target: Vector3 = Vector3.ZERO  # Current door we're steering toward
+var _seeking_door: bool = false
+var _blocked_timer: float = 0.0     # How long we've been blocked
+
+# Enemy footstep sounds
+var _walk_audio: AudioStreamPlayer3D = null
+var _run_audio: AudioStreamPlayer3D = null
+
 
 func _ready() -> void:
 	# Load 3D model
@@ -132,6 +142,25 @@ func _ready() -> void:
 
 	_growl_timer = randf_range(GameConfig.ENEMY_GROWL_INTERVAL_MIN, GameConfig.ENEMY_GROWL_INTERVAL_MAX)
 
+	# Enemy walk/run footstep sounds (looping via finished signal)
+	_walk_audio = AudioStreamPlayer3D.new()
+	if ResourceLoader.exists("res://songs/walk_1.wav"):
+		_walk_audio.stream = load("res://songs/walk_1.wav")
+	_walk_audio.volume_db = 0.0
+	_walk_audio.max_distance = 25.0
+	_walk_audio.bus = "Monster"
+	add_child(_walk_audio)
+	_walk_audio.finished.connect(_on_walk_audio_finished)
+
+	_run_audio = AudioStreamPlayer3D.new()
+	if ResourceLoader.exists("res://songs/run_1.wav"):
+		_run_audio.stream = load("res://songs/run_1.wav")
+	_run_audio.volume_db = 2.0
+	_run_audio.max_distance = 35.0
+	_run_audio.bus = "Monster"
+	add_child(_run_audio)
+	_run_audio.finished.connect(_on_run_audio_finished)
+
 
 ## Initialize with map data and patrol waypoints.
 func setup(grid: Array[Array], rows: int, cols: int, waypoints: Array, player: PlayerController, game_doors: Array = []) -> void:
@@ -187,15 +216,15 @@ func _physics_process(delta: float) -> void:
 		var moved := global_position.distance_to(_last_pos)
 		if moved < 0.3:
 			_stuck_count += 1
+			# Flip wall-follow direction when stuck
+			_wall_follow_dir *= -1.0
+			_seeking_door = false
 			if state == State.PATROL and patrol_targets.size() > 0:
-				# Skip to a further waypoint when repeatedly stuck
 				var skip := mini(_stuck_count, 3)
 				current_patrol_index = (current_patrol_index + skip) % patrol_targets.size()
 			elif state == State.INVESTIGATE or state == State.CHASE:
-				# Try to nudge sideways to get unstuck
-				var nudge_dir := Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized()
-				velocity.x = nudge_dir.x * GameConfig.ENEMY_PATROL_SPEED
-				velocity.z = nudge_dir.z * GameConfig.ENEMY_PATROL_SPEED
+				# Try to find a door to go through
+				_try_seek_door()
 		else:
 			_stuck_count = 0
 		_last_pos = global_position
@@ -218,8 +247,6 @@ func _is_wall_at(world_pos: Vector3) -> bool:
 	if gx < 0 or gx >= grid_cols or gz < 0 or gz >= grid_rows:
 		return true  # Out of bounds = wall
 	var cell: int = grid_data[gz][gx]
-	# Solid cells the enemy cannot walk through:
-	# 1 = wall, 3 = window, 5 = fence, 6 = coffee machine
 	return cell == 1 or cell == 3 or cell == 5 or cell == 6
 
 
@@ -234,58 +261,6 @@ func _try_open_nearby_doors() -> void:
 			door.toggle()
 			_door_open_cooldown = 1.5
 			break
-
-
-func _is_blocked(dir: Vector3, speed: float) -> bool:
-	## Check if moving in dir would hit a wall, using multiple lookahead distances.
-	for dist_mult: float in [0.2, 0.5, 1.0]:
-		var check_pos: Vector3 = global_position + dir * speed * dist_mult
-		if _is_wall_at(check_pos):
-			return true
-	return false
-
-
-func _apply_movement(dir: Vector3, speed: float) -> void:
-	## Move in the desired direction, steer around walls, try multiple angles.
-	if not _is_blocked(dir, speed):
-		velocity.x = dir.x * speed
-		velocity.z = dir.z * speed
-		_face_direction(dir)
-		return
-
-	# Try sliding along X only
-	var try_x := Vector3(dir.x, 0, 0).normalized()
-	if try_x.length() > 0.1 and not _is_blocked(try_x, speed):
-		velocity.x = try_x.x * speed
-		velocity.z = 0
-		_face_direction(try_x)
-		return
-
-	# Try sliding along Z only
-	var try_z := Vector3(0, 0, dir.z).normalized()
-	if try_z.length() > 0.1 and not _is_blocked(try_z, speed):
-		velocity.x = 0
-		velocity.z = try_z.z * speed
-		_face_direction(try_z)
-		return
-
-	# Try diagonal alternatives (45-degree offsets)
-	var angles := [PI / 4.0, -PI / 4.0, PI / 2.0, -PI / 2.0, 3.0 * PI / 4.0, -3.0 * PI / 4.0]
-	for angle_offset: float in angles:
-		var rotated := Vector3(
-			dir.x * cos(angle_offset) - dir.z * sin(angle_offset),
-			0,
-			dir.x * sin(angle_offset) + dir.z * cos(angle_offset)
-		).normalized()
-		if not _is_blocked(rotated, speed):
-			velocity.x = rotated.x * speed * 0.7
-			velocity.z = rotated.z * speed * 0.7
-			_face_direction(rotated)
-			return
-
-	# Fully stuck – stop
-	velocity.x = 0
-	velocity.z = 0
 
 
 # ---------------------------------------------------------------------------
@@ -323,15 +298,173 @@ func _detect_player(delta: float) -> void:
 		interest_position = player_ref.global_position
 		interest_timer = GameConfig.ENEMY_LOSE_INTEREST_TIME
 
+		var old_state := state
 		if stimuli_strength > 0.6:
 			state = State.CHASE
 		elif state == State.PATROL:
 			state = State.INVESTIGATE
+		if state != old_state:
+			_seeking_door = false
+			_blocked_timer = 0.0
 	else:
 		interest_timer -= delta
 		if interest_timer <= 0:
 			if state != State.PATROL:
 				state = State.PATROL
+				_seeking_door = false
+				_blocked_timer = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Grid line-of-sight (Bresenham) – very cheap, no allocations
+# ---------------------------------------------------------------------------
+
+func _has_grid_los(from: Vector3, to: Vector3) -> bool:
+	## Returns true if no solid wall cell lies between from and to on the grid.
+	var s: float = GameConfig.SCALE
+	var x0: int = int(from.x / s)
+	var y0: int = int(from.z / s)
+	var x1: int = int(to.x / s)
+	var y1: int = int(to.z / s)
+
+	var dx: int = absi(x1 - x0)
+	var dy: int = absi(y1 - y0)
+	var sx: int = 1 if x0 < x1 else -1
+	var sy: int = 1 if y0 < y1 else -1
+	var err: int = dx - dy
+
+	var steps: int = 0
+	while steps < 500:  # Safety limit
+		steps += 1
+		if x0 == x1 and y0 == y1:
+			return true
+		# Check current cell
+		if x0 < 0 or x0 >= grid_cols or y0 < 0 or y0 >= grid_rows:
+			return false
+		var cell: int = grid_data[y0][x0]
+		if cell == 1 or cell == 3 or cell == 5 or cell == 6:
+			return false
+		var e2: int = 2 * err
+		if e2 > -dy:
+			err -= dy
+			x0 += sx
+		if e2 < dx:
+			err += dx
+			y0 += sy
+	return false
+
+
+# ---------------------------------------------------------------------------
+# Wall avoidance helpers
+# ---------------------------------------------------------------------------
+
+func _is_blocked(dir: Vector3, speed: float) -> bool:
+	for dist_mult: float in [0.2, 0.5, 1.0]:
+		var check_pos: Vector3 = global_position + dir * speed * dist_mult
+		if _is_wall_at(check_pos):
+			return true
+	return false
+
+
+## Check how far we can walk in a direction (returns distance in cells, max 8)
+func _clearance_in_dir(dir: Vector3) -> int:
+	var s: float = GameConfig.SCALE
+	for i: int in range(1, 9):
+		var check := global_position + dir * s * float(i)
+		if _is_wall_at(check):
+			return i - 1
+	return 8
+
+
+## Find the nearest door and set it as navigation target
+func _try_seek_door() -> void:
+	if doors_ref.is_empty():
+		return
+	var best_door: Door = null
+	var best_score: float = INF
+	var player_pos := player_ref.global_position if player_ref else global_position
+	for door: Door in doors_ref:
+		var dist_to_me: float = global_position.distance_to(door.center_pos)
+		if dist_to_me < 1.5 or dist_to_me > 40.0:
+			continue
+		# Prefer doors that are: 1) visible to us AND 2) closer to the player
+		var can_see_door: bool = _has_grid_los(global_position, door.center_pos)
+		var dist_to_player: float = door.center_pos.distance_to(player_pos)
+		# Heavily penalize doors we can't see (they're behind walls too)
+		var visibility_penalty: float = 0.0 if can_see_door else 50.0
+		var score: float = dist_to_me * 0.3 + dist_to_player * 0.7 + visibility_penalty
+		if score < best_score:
+			best_score = score
+			best_door = door
+	if best_door:
+		_door_target = best_door.center_pos
+		_seeking_door = true
+
+
+func _apply_movement(dir: Vector3, speed: float) -> void:
+	# If we're seeking a door, override direction toward the door
+	if _seeking_door:
+		var door_dir: Vector3 = (_door_target - global_position)
+		door_dir.y = 0
+		if door_dir.length() < 2.0:
+			# Reached the door area, stop seeking
+			_seeking_door = false
+		else:
+			dir = door_dir.normalized()
+
+	# Direct path clear
+	if not _is_blocked(dir, speed):
+		_blocked_timer = 0.0
+		velocity.x = dir.x * speed
+		velocity.z = dir.z * speed
+		_face_direction(dir)
+		return
+
+	_blocked_timer += get_physics_process_delta_time()
+
+	# Smart steering: test 16 directions, pick the best walkable one
+	# that gets us closest to where we want to go
+	var target_pos: Vector3 = global_position + dir * 10.0  # Where we ultimately want to reach
+	var best_dir := Vector3.ZERO
+	var best_score: float = INF
+
+	for i: int in range(16):
+		var angle: float = float(i) * PI * 2.0 / 16.0
+		var test_dir := Vector3(cos(angle), 0, sin(angle))
+		var clearance: int = _clearance_in_dir(test_dir)
+		if clearance < 2:
+			continue  # Not enough room
+
+		# Score: how close does moving this way get us to the target?
+		var future_pos: Vector3 = global_position + test_dir * GameConfig.SCALE * float(mini(clearance, 4))
+		var dist_to_target: float = future_pos.distance_to(target_pos)
+
+		# Bonus: prefer the current wall-follow side
+		var cross: float = dir.x * test_dir.z - dir.z * test_dir.x  # Cross product Y
+		var side_bonus: float = 0.0
+		if cross * _wall_follow_dir > 0:
+			side_bonus = -1.0  # Slight preference for the wall-follow side
+
+		var score: float = dist_to_target + side_bonus
+		if score < best_score:
+			best_score = score
+			best_dir = test_dir
+
+	if best_dir.length() > 0.1:
+		velocity.x = best_dir.x * speed * 0.8
+		velocity.z = best_dir.z * speed * 0.8
+		_face_direction(best_dir)
+		return
+
+	# Truly stuck: try random nudge
+	var nudge := Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized()
+	velocity.x = nudge.x * speed * 0.5
+	velocity.z = nudge.z * speed * 0.5
+
+	# After being blocked a while, try to find a door
+	if _blocked_timer > 1.0 and not _seeking_door:
+		_try_seek_door()
+		_blocked_timer = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -341,22 +474,23 @@ func _detect_player(delta: float) -> void:
 func _do_patrol(delta: float) -> void:
 	if patrol_targets.is_empty():
 		_play_anim(anim_idle)
+		_stop_move_sounds()
 		return
 
 	var target: Vector3 = patrol_targets[current_patrol_index]
-	target.y = global_position.y  # Stay on same Y
+	target.y = global_position.y
 
 	var dir: Vector3 = (target - global_position)
 	dir.y = 0
 	var dist: float = dir.length()
 
 	if dist < 2.0:
-		# Reached waypoint, go to next
 		current_patrol_index = (current_patrol_index + 1) % patrol_targets.size()
 		return
 
 	dir = dir.normalized()
 	_play_anim(anim_walk)
+	_play_move_sound(false)
 	_apply_movement(dir, GameConfig.ENEMY_PATROL_SPEED)
 
 
@@ -373,15 +507,16 @@ func _do_investigate(delta: float) -> void:
 	var dist: float = dir.length()
 
 	if dist < 2.0:
-		# Reached investigation point, slow down and wait
 		velocity.x = 0
 		velocity.z = 0
 		_play_anim(anim_idle)
+		_stop_move_sounds()
 		return
 
 	dir = dir.normalized()
 	var speed: float = GameConfig.ENEMY_PATROL_SPEED * 1.5
 	_play_anim(anim_walk)
+	_play_move_sound(false)
 	_apply_movement(dir, speed)
 
 
@@ -396,12 +531,45 @@ func _do_chase(delta: float) -> void:
 	var target: Vector3 = player_ref.global_position
 	target.y = global_position.y
 
-	var dir: Vector3 = (target - global_position)
-	dir.y = 0
-	dir = dir.normalized()
+	var has_los: bool = _has_grid_los(global_position, player_ref.global_position)
 
-	_play_anim(anim_run)
-	_apply_movement(dir, GameConfig.ENEMY_CHASE_SPEED)
+	if has_los:
+		# Clear path to player → go direct
+		_seeking_door = false
+		_blocked_timer = 0.0
+		var dir: Vector3 = (target - global_position)
+		dir.y = 0
+		dir = dir.normalized()
+		_play_anim(anim_run)
+		_play_move_sound(true)
+		velocity.x = dir.x * GameConfig.ENEMY_CHASE_SPEED
+		velocity.z = dir.z * GameConfig.ENEMY_CHASE_SPEED
+		_face_direction(dir)
+	else:
+		# Wall between us → navigate via doors
+		if not _seeking_door:
+			_try_seek_door()
+
+		if _seeking_door:
+			var door_dir: Vector3 = (_door_target - global_position)
+			door_dir.y = 0
+			if door_dir.length() < 2.0:
+				# Reached this door, find next one
+				_seeking_door = false
+				_try_seek_door()
+			else:
+				var dir: Vector3 = door_dir.normalized()
+				_play_anim(anim_run)
+				_play_move_sound(true)
+				_apply_movement(dir, GameConfig.ENEMY_CHASE_SPEED)
+		else:
+			# No door found, try direct anyway
+			var dir: Vector3 = (target - global_position)
+			dir.y = 0
+			dir = dir.normalized()
+			_play_anim(anim_run)
+			_play_move_sound(true)
+			_apply_movement(dir, GameConfig.ENEMY_CHASE_SPEED)
 
 
 # ---------------------------------------------------------------------------
@@ -417,6 +585,7 @@ func _catch_player() -> void:
 	velocity.x = 0
 	velocity.z = 0
 	_play_anim(anim_attack)
+	_stop_move_sounds()
 	# Play the find-me growl
 	if _find_growl_audio and _find_growl_audio.stream:
 		_find_growl_audio.play()
@@ -435,6 +604,39 @@ func _face_direction(dir: Vector3) -> void:
 	if dir.length_squared() > 0.001:
 		var target_angle: float = atan2(dir.x, dir.z)
 		rotation.y = lerp_angle(rotation.y, target_angle, 0.1)
+
+
+## Play walk or run footstep sound (3D spatial). Loops automatically.
+func _play_move_sound(is_running: bool) -> void:
+	if is_running:
+		if _walk_audio and _walk_audio.playing:
+			_walk_audio.stop()
+		if _run_audio and _run_audio.stream and not _run_audio.playing:
+			_run_audio.play()
+	else:
+		if _run_audio and _run_audio.playing:
+			_run_audio.stop()
+		if _walk_audio and _walk_audio.stream and not _walk_audio.playing:
+			_walk_audio.play()
+
+
+func _stop_move_sounds() -> void:
+	if _walk_audio and _walk_audio.playing:
+		_walk_audio.stop()
+	if _run_audio and _run_audio.playing:
+		_run_audio.stop()
+
+
+func _on_walk_audio_finished() -> void:
+	# Loop walk sound if still walking
+	if state == State.PATROL or state == State.INVESTIGATE:
+		_walk_audio.play()
+
+
+func _on_run_audio_finished() -> void:
+	# Loop run sound if still chasing
+	if state == State.CHASE:
+		_run_audio.play()
 
 
 func _find_animation_player(node: Node) -> AnimationPlayer:
