@@ -5,6 +5,7 @@ const SCALE := 0.12
 const WALL_HEIGHT := 5.0
 const THRESHOLD := 128
 const MAP_PATH := "res://map_100.png"
+const MAP_PATH_F2 := "res://map_200.png"
 const WALK_SPEED := 5.0
 const SPRINT_SPEED := 9.0
 const JUMP_VELOCITY := 4.5
@@ -28,12 +29,18 @@ const FLASH_ANGLE_MAX := 50.0
 const FLASH_ANGLE_MIN := 15.0
 
 # --- Portes ---
-const DOOR_INTERACT_DISTANCE := 2.5
+const DOOR_INTERACT_DISTANCE := 3.5
 const DOOR_OPEN_SPEED := 1.5
 const DOOR_SOUND_PATH := "res://door_open.ogg"
 
 # --- Bruits de pas ---
 const FOOTSTEP_SOUND_PATH := "res://footstep.ogg"
+
+# --- Étage 2 ---
+const FLOOR_2_HEIGHT := 6.0  # Hauteur du sol du niveau 2
+
+# --- Escaliers (détectés depuis le jaune sur map_100) ---
+var staircase_rects: Array = []  # Liste de [col, row, w, h] des zones jaunes
 
 # --- Puzzle ---
 const UV_PARTS_NEEDED := 4
@@ -190,6 +197,10 @@ func _ready() -> void:
 				line.append(6)
 				red_line.append(false)
 				terrace_line.append(false)
+			elif pixel.r > 0.8 and pixel.g > 0.8 and pixel.b < 0.3:
+				line.append(7)  # Yellow = staircase
+				red_line.append(false)
+				terrace_line.append(false)
 			elif pixel.r < (THRESHOLD / 255.0):
 				line.append(1)
 				red_line.append(false)
@@ -208,6 +219,7 @@ func _ready() -> void:
 	var terrace_rects: Array = _merge_type(grid_data, grid_rows, grid_cols, 4)
 	var fence_rects: Array = _merge_type(grid_data, grid_rows, grid_cols, 5)
 	var coffee_machines: Array = _merge_type(grid_data, grid_rows, grid_cols, 6)
+	staircase_rects = _merge_type(grid_data, grid_rows, grid_cols, 7)
 	var spawn_grid: Vector2 = _find_spawn(grid_data, grid_rows, grid_cols)
 	spawn_position = Vector3(spawn_grid.x * SCALE, 2.0, spawn_grid.y * SCALE)
 	
@@ -216,12 +228,19 @@ func _ready() -> void:
 	
 	_build_floor(grid_rows, grid_cols)
 	_build_terrace_floors(terrace_rects)
-	_build_ceiling(grid_rows, grid_cols, terrace_grid)
+	_build_ceiling_with_holes(grid_rows, grid_cols, terrace_grid)
 	_build_walls(rectangles, grid_rows)
 	_build_windows(window_rects)
 	_build_glass_fences(fence_rects)
 	_build_coffee_machines(coffee_machines)
 	_build_doors_from_blocks(door_blocks)
+	
+	# Étage 2
+	_build_floor_2()
+	
+	# Escaliers (rampes)
+	_build_staircases()
+	
 	_setup_environment()
 	
 	# Placer les éléments de puzzle
@@ -1202,6 +1221,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _create_player() -> void:
 	player = CharacterBody3D.new()
 	player.position = spawn_position
+	player.floor_max_angle = deg_to_rad(60.0)  # Permet de monter des rampes
 	
 	var col_shape := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
@@ -1347,8 +1367,58 @@ func _build_floor(rows: int, cols: int) -> void:
 	add_child(body)
 
 
-func _build_ceiling(rows: int, cols: int, terrace_grid: Array) -> void:
-	var ceiling_rects: Array = _merge_ceiling_areas(rows, cols, terrace_grid)
+func _build_ceiling_with_holes(rows: int, cols: int, terrace_grid: Array) -> void:
+	# Build ceiling excluding terrace, staircase zones, AND zones where floor 2 exists above
+	# Load map_200 to find where floor 2 has solid floor (= no ceiling needed for N1)
+	var f2_has_floor: Array[Array] = []
+	var f2_image := Image.new()
+	var f2_loaded: bool = f2_image.load(MAP_PATH_F2) == OK
+	
+	for row: int in range(rows):
+		var line: Array[bool] = []
+		line.resize(cols)
+		line.fill(false)
+		f2_has_floor.append(line)
+	
+	if f2_loaded:
+		var f2_cols: int = f2_image.get_width()
+		var f2_rows: int = f2_image.get_height()
+		for row: int in range(mini(rows, f2_rows)):
+			for col: int in range(mini(cols, f2_cols)):
+				var pixel: Color = f2_image.get_pixel(col, row)
+				# Jaune = vide (pas de sol N2) -> on GARDE le plafond N1
+				# Noir = mur N2 -> pas de sol N2 -> on GARDE le plafond N1
+				# Blanc/rouge/bleu = sol N2 existe -> PAS de plafond N1
+				var is_yellow: bool = pixel.r > 0.8 and pixel.g > 0.8 and pixel.b < 0.4
+				var is_wall: bool = pixel.r < (THRESHOLD / 255.0)
+				if not is_yellow and not is_wall:
+					f2_has_floor[row][col] = true  # Sol N2 existe ici
+	
+	var exclude_grid: Array[Array] = []
+	for row: int in range(rows):
+		var line: Array[bool] = []
+		line.resize(cols)
+		line.fill(false)
+		exclude_grid.append(line)
+	
+	for row: int in range(rows):
+		for col: int in range(cols):
+			if terrace_grid[row][col]:
+				exclude_grid[row][col] = true
+			elif f2_has_floor[row][col]:
+				exclude_grid[row][col] = true
+	
+	# Mark staircases
+	for rect: Array in staircase_rects:
+		var sc: int = rect[0]
+		var sr: int = rect[1]
+		var sw: int = rect[2]
+		var sh: int = rect[3]
+		for r: int in range(sr, mini(sr + sh, rows)):
+			for c: int in range(sc, mini(sc + sw, cols)):
+				exclude_grid[r][c] = true
+	
+	var ceiling_rects: Array = _merge_ceiling_areas(rows, cols, exclude_grid)
 	
 	for rect: Array in ceiling_rects:
 		var col: int = rect[0]
@@ -1384,6 +1454,371 @@ func _build_ceiling(rows: int, cols: int, terrace_grid: Array) -> void:
 		
 		add_child(ceiling_mesh)
 		add_child(body)
+
+
+# ============================================
+# ÉTAGE 2
+# ============================================
+
+func _build_floor_2() -> void:
+	var image := Image.new()
+	var err: int = image.load(MAP_PATH_F2)
+	
+	if err != OK:
+		print("ERREUR : impossible de charger ", MAP_PATH_F2)
+		return
+	
+	var f2_cols: int = image.get_width()
+	var f2_rows: int = image.get_height()
+	
+	var f2_grid: Array[Array] = []
+	var f2_red_grid: Array[Array] = []
+	var f2_void_grid: Array[Array] = []
+	
+	for row: int in range(f2_rows):
+		var line: Array[int] = []
+		var red_line: Array[bool] = []
+		var void_line: Array[bool] = []
+		for col: int in range(f2_cols):
+			var pixel: Color = image.get_pixel(col, row)
+			if pixel.r > 0.8 and pixel.g > 0.8 and pixel.b < 0.4:
+				# Jaune = vide total
+				line.append(0)
+				red_line.append(false)
+				void_line.append(true)
+			elif pixel.r > 0.8 and pixel.g < 0.3 and pixel.b < 0.3:
+				line.append(2)
+				red_line.append(true)
+				void_line.append(false)
+			elif pixel.b > 0.6 and pixel.r < 0.3 and pixel.g < 0.3:
+				line.append(3)
+				red_line.append(false)
+				void_line.append(false)
+			elif pixel.r < (THRESHOLD / 255.0):
+				line.append(1)
+				red_line.append(false)
+				void_line.append(false)
+			else:
+				line.append(0)
+				red_line.append(false)
+				void_line.append(false)
+		f2_grid.append(line)
+		f2_red_grid.append(red_line)
+		f2_void_grid.append(void_line)
+	
+	var void_count: int = 0
+	var wall_count: int = 0
+	var open_count: int = 0
+	for row: int in range(f2_rows):
+		for col: int in range(f2_cols):
+			if f2_void_grid[row][col]:
+				void_count += 1
+			elif f2_grid[row][col] == 1:
+				wall_count += 1
+			elif f2_grid[row][col] == 0:
+				open_count += 1
+	print("Etage 2 parse: vide=", void_count, " murs=", wall_count, " sol=", open_count)
+	
+	var f2_walls: Array = _merge_type(f2_grid, f2_rows, f2_cols, 1)
+	var f2_windows: Array = _merge_type(f2_grid, f2_rows, f2_cols, 3)
+	var f2_doors: Array = _find_door_blocks(f2_red_grid, f2_rows, f2_cols)
+	
+	# Sol etage 2 : exclure murs ET zones vide (jaune)
+	var sol_exclude: Array[Array] = []
+	for row: int in range(f2_rows):
+		var line: Array[bool] = []
+		for col: int in range(f2_cols):
+			line.append(f2_void_grid[row][col] or f2_grid[row][col] == 1)
+		sol_exclude.append(line)
+	
+	var sol_rects: Array = _merge_ceiling_areas(f2_rows, f2_cols, sol_exclude)
+	
+	var floor_mat := StandardMaterial3D.new()
+	floor_mat.albedo_color = Color(0.3, 0.3, 0.3)
+	
+	for rect: Array in sol_rects:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		var f_mesh := MeshInstance3D.new()
+		var f_box := BoxMesh.new()
+		f_box.size = Vector3(w * SCALE, 1.0, h * SCALE)
+		f_mesh.mesh = f_box
+		f_mesh.position = Vector3((col + w / 2.0) * SCALE, FLOOR_2_HEIGHT - 0.5, (row + h / 2.0) * SCALE)
+		f_mesh.material_override = floor_mat
+		
+		var f_body := StaticBody3D.new()
+		var f_col := CollisionShape3D.new()
+		var f_shape := BoxShape3D.new()
+		f_shape.size = f_box.size
+		f_col.shape = f_shape
+		f_body.add_child(f_col)
+		f_body.position = f_mesh.position
+		add_child(f_mesh)
+		add_child(f_body)
+	
+	# Plafond etage 2
+	for rect: Array in sol_rects:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		var c_mesh := MeshInstance3D.new()
+		var c_box := BoxMesh.new()
+		c_box.size = Vector3(w * SCALE, 1.0, h * SCALE)
+		c_mesh.mesh = c_box
+		c_mesh.position = Vector3((col + w / 2.0) * SCALE, FLOOR_2_HEIGHT + WALL_HEIGHT + 0.5, (row + h / 2.0) * SCALE)
+		var ceil_mat := StandardMaterial3D.new()
+		ceil_mat.albedo_color = Color(0.4, 0.4, 0.42)
+		c_mesh.material_override = ceil_mat
+		
+		var c_body := StaticBody3D.new()
+		var c_col := CollisionShape3D.new()
+		var c_shape := BoxShape3D.new()
+		c_shape.size = c_box.size
+		c_col.shape = c_shape
+		c_body.add_child(c_col)
+		c_body.position = c_mesh.position
+		add_child(c_mesh)
+		add_child(c_body)
+	
+	# Murs etage 2
+	for rect: Array in f2_walls:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		var wall := MeshInstance3D.new()
+		var wall_box := BoxMesh.new()
+		wall_box.size = Vector3(w * SCALE, WALL_HEIGHT, h * SCALE)
+		wall.mesh = wall_box
+		wall.position = Vector3((col + w / 2.0) * SCALE, FLOOR_2_HEIGHT + WALL_HEIGHT / 2.0, (row + h / 2.0) * SCALE)
+		var wall_mat := StandardMaterial3D.new()
+		wall_mat.albedo_color = Color(0.45, 0.45, 0.5)
+		wall.material_override = wall_mat
+		
+		var wall_body := StaticBody3D.new()
+		var wall_col := CollisionShape3D.new()
+		var wall_shape := BoxShape3D.new()
+		wall_shape.size = wall_box.size
+		wall_col.shape = wall_shape
+		wall_body.add_child(wall_col)
+		wall_body.position = wall.position
+		add_child(wall)
+		add_child(wall_body)
+	
+	# Fenetres etage 2
+	for rect: Array in f2_windows:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		var window := MeshInstance3D.new()
+		var win_box := BoxMesh.new()
+		win_box.size = Vector3(w * SCALE, WALL_HEIGHT, h * SCALE)
+		window.mesh = win_box
+		window.position = Vector3((col + w / 2.0) * SCALE, FLOOR_2_HEIGHT + WALL_HEIGHT / 2.0, (row + h / 2.0) * SCALE)
+		var glass_mat := StandardMaterial3D.new()
+		glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		glass_mat.albedo_color = Color(0.7, 0.85, 1.0, 0.3)
+		glass_mat.roughness = 0.1
+		glass_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		window.material_override = glass_mat
+		
+		var win_body := StaticBody3D.new()
+		var win_col := CollisionShape3D.new()
+		var win_shape := BoxShape3D.new()
+		win_shape.size = win_box.size
+		win_col.shape = win_shape
+		win_body.add_child(win_col)
+		win_body.position = window.position
+		add_child(window)
+		add_child(win_body)
+	
+	# Portes etage 2
+	var old_grid: Array[Array] = grid_data
+	var old_rows: int = grid_rows
+	var old_cols: int = grid_cols
+	grid_data = f2_grid
+	grid_rows = f2_rows
+	grid_cols = f2_cols
+	
+	var sound: Resource = null
+	if ResourceLoader.exists(DOOR_SOUND_PATH):
+		sound = load(DOOR_SOUND_PATH)
+	
+	for block: Array in f2_doors:
+		var col: int = block[0]
+		var row: int = block[1]
+		var w: int = block[2]
+		var h: int = block[3]
+		
+		var is_horizontal: bool = _detect_orientation(col, row, w, h)
+		var door := Door.new()
+		door.pivot = Node3D.new()
+		door.is_horizontal = is_horizontal
+		
+		var door_width: float
+		var door_thickness: float = SCALE * 2.0
+		var door_height: float = WALL_HEIGHT * 0.9
+		
+		if is_horizontal:
+			door_width = w * SCALE
+		else:
+			door_width = h * SCALE
+		
+		var pivot_x: float
+		var pivot_z: float
+		if is_horizontal:
+			pivot_x = col * SCALE
+			pivot_z = (row + h / 2.0) * SCALE
+		else:
+			pivot_x = (col + w / 2.0) * SCALE
+			pivot_z = row * SCALE
+		
+		door.pivot.position = Vector3(pivot_x, FLOOR_2_HEIGHT, pivot_z)
+		door.center_pos = Vector3((col + w / 2.0) * SCALE, FLOOR_2_HEIGHT + 1.0, (row + h / 2.0) * SCALE)
+		
+		door.mesh = MeshInstance3D.new()
+		var door_box := BoxMesh.new()
+		if is_horizontal:
+			door_box.size = Vector3(door_width, door_height, door_thickness)
+			door.mesh.position = Vector3(door_width / 2.0, door_height / 2.0, 0)
+		else:
+			door_box.size = Vector3(door_thickness, door_height, door_width)
+			door.mesh.position = Vector3(0, door_height / 2.0, door_width / 2.0)
+		door.mesh.mesh = door_box
+		
+		var door_mat := StandardMaterial3D.new()
+		door_mat.albedo_color = Color(0.35, 0.2, 0.1)
+		door.mesh.material_override = door_mat
+		
+		door.body = StaticBody3D.new()
+		var door_col := CollisionShape3D.new()
+		var door_shape := BoxShape3D.new()
+		door_shape.size = door_box.size
+		door_col.shape = door_shape
+		door_col.position = door.mesh.position
+		door.body.add_child(door_col)
+		
+		door.audio = AudioStreamPlayer3D.new()
+		door.audio.max_distance = 20.0
+		door.audio.unit_size = 4.0
+		if sound:
+			door.audio.stream = sound
+		door.audio.position = door.mesh.position
+		
+		door.pivot.add_child(door.mesh)
+		door.pivot.add_child(door.body)
+		door.pivot.add_child(door.audio)
+		add_child(door.pivot)
+		doors.append(door)
+	
+	grid_data = old_grid
+	grid_rows = old_rows
+	grid_cols = old_cols
+	
+	print("Etage 2 : Murs=", f2_walls.size(), " Portes=", f2_doors.size(), " Fenetres=", f2_windows.size(), " Sol=", sol_rects.size())
+
+
+
+func _build_staircases() -> void:
+	print("=== CONSTRUCTION ESCALIERS ===")
+	print("Nombre de zones escalier detectees: ", staircase_rects.size())
+	for rect: Array in staircase_rects:
+		var col: int = rect[0]
+		var row: int = rect[1]
+		var w: int = rect[2]
+		var h: int = rect[3]
+		
+		var stair_x: float = col * SCALE
+		var stair_z: float = row * SCALE
+		var stair_width_x: float = w * SCALE   # Longueur de la rampe (axe X)
+		var stair_depth_z: float = h * SCALE    # Largeur de la rampe (axe Z)
+		
+		# Déterminer la direction : vers le centre de la map
+		var center_x: float = grid_cols * SCALE / 2.0
+		var mid_x: float = stair_x + stair_width_x / 2.0
+		var goes_towards_center: bool = mid_x < center_x  # Escalier gauche monte vers la droite
+		
+		print("  Escalier: grille=(", col, ",", row, ") X=", stair_x, "-", stair_x + stair_width_x, " centre=", center_x, " vers_centre=", goes_towards_center)
+		
+		# Rampe le long de X, largeur le long de Z
+		# 80 dalles fines avec chevauchement
+		var num_slabs: int = 80
+		var slab_length: float = stair_width_x / num_slabs * 1.5  # Chevauchement
+		var slab_rise: float = FLOOR_2_HEIGHT / num_slabs
+		
+		for i: int in range(num_slabs):
+			var slab_y: float = slab_rise * i
+			var t: float = float(i) / float(num_slabs)
+			
+			var slab_x: float
+			if goes_towards_center:
+				# Monte de gauche (X petit) vers droite (X grand = vers centre)
+				slab_x = stair_x + stair_width_x * t
+			else:
+				# Monte de droite (X grand) vers gauche (X petit = vers centre)
+				slab_x = stair_x + stair_width_x * (1.0 - t)
+			
+			var slab := MeshInstance3D.new()
+			var slab_box := BoxMesh.new()
+			slab_box.size = Vector3(slab_length, 0.05, stair_depth_z)
+			slab.mesh = slab_box
+			slab.position = Vector3(slab_x, slab_y, stair_z + stair_depth_z / 2.0)
+			
+			var slab_mat := StandardMaterial3D.new()
+			slab_mat.albedo_color = Color(0.5, 0.45, 0.4)
+			slab.material_override = slab_mat
+			
+			var slab_body := StaticBody3D.new()
+			var slab_col := CollisionShape3D.new()
+			var slab_shape := BoxShape3D.new()
+			slab_shape.size = slab_box.size
+			slab_col.shape = slab_shape
+			slab_body.add_child(slab_col)
+			slab_body.position = slab.position
+			
+			add_child(slab)
+			add_child(slab_body)
+		
+		# Murs lateraux (nord et sud de l'escalier, le long de Z)
+		var total_h: float = FLOOR_2_HEIGHT + WALL_HEIGHT
+		for side: int in [0, 1]:
+			var rail := MeshInstance3D.new()
+			var rail_box := BoxMesh.new()
+			rail_box.size = Vector3(stair_width_x, total_h, SCALE * 3)
+			rail.mesh = rail_box
+			
+			var rail_z: float
+			if side == 0:
+				rail_z = stair_z - SCALE * 1.5
+			else:
+				rail_z = stair_z + stair_depth_z + SCALE * 1.5
+			
+			rail.position = Vector3(stair_x + stair_width_x / 2.0, total_h / 2.0, rail_z)
+			
+			var rail_mat := StandardMaterial3D.new()
+			rail_mat.albedo_color = Color(0.4, 0.4, 0.45)
+			rail.material_override = rail_mat
+			
+			var rail_body := StaticBody3D.new()
+			var rail_col := CollisionShape3D.new()
+			var rail_shape := BoxShape3D.new()
+			rail_shape.size = rail_box.size
+			rail_col.shape = rail_shape
+			rail_body.add_child(rail_col)
+			rail_body.position = rail.position
+			
+			add_child(rail)
+			add_child(rail_body)
+		
+		print("  -> Rampe est-ouest, ", num_slabs, " dalles")
 
 
 func _build_terrace_floors(rectangles: Array) -> void:
@@ -1900,10 +2335,8 @@ func _get_nearest_door() -> Door:
 	var nearest: Door = null
 	var nearest_dist: float = DOOR_INTERACT_DISTANCE
 	
-	var player_pos_flat := Vector3(player.global_position.x, 1.0, player.global_position.z)
-	
 	for door: Door in doors:
-		var dist: float = player_pos_flat.distance_to(door.center_pos)
+		var dist: float = player.global_position.distance_to(door.center_pos)
 		if dist < nearest_dist:
 			nearest_dist = dist
 			nearest = door
