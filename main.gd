@@ -1352,7 +1352,14 @@ func _build_floor(rows: int, cols: int) -> void:
 	floor_mesh.position = Vector3(cols * SCALE / 2.0, -0.5, rows * SCALE / 2.0)
 	
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.3, 0.3, 0.3)
+	if ResourceLoader.exists("res://textures/floor.jpg"):
+		mat.albedo_texture = load("res://textures/floor.jpg")
+		mat.uv1_triplanar = true
+		mat.uv1_triplanar_sharpness = 1.0
+		mat.uv1_scale = Vector3(0.5, 0.5, 0.5)
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	else:
+		mat.albedo_color = Color(0.3, 0.3, 0.3)
 	floor_mesh.material_override = mat
 	
 	var body := StaticBody3D.new()
@@ -1439,7 +1446,10 @@ func _build_ceiling_with_holes(rows: int, cols: int, terrace_grid: Array) -> voi
 		var ceiling_texture := StandardMaterial3D.new()
 		if ResourceLoader.exists("res://textures/ceiling_cut.jpg"):
 			ceiling_texture.albedo_texture = load("res://textures/ceiling_cut.jpg")
-			ceiling_texture.uv1_scale = Vector3(w / 8.0, h / 14.0, 1)
+			ceiling_texture.uv1_triplanar = true
+			ceiling_texture.uv1_triplanar_sharpness = 1.0
+			ceiling_texture.uv1_scale = Vector3(0.5, 0.5, 0.5)
+			ceiling_texture.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		else:
 			ceiling_texture.albedo_color = Color(0.4, 0.4, 0.42)
 		ceiling_mesh.material_override = ceiling_texture
@@ -1534,7 +1544,25 @@ func _build_floor_2() -> void:
 	var sol_rects: Array = _merge_ceiling_areas(f2_rows, f2_cols, sol_exclude)
 	
 	var floor_mat := StandardMaterial3D.new()
-	floor_mat.albedo_color = Color(0.3, 0.3, 0.3)
+	if ResourceLoader.exists("res://textures/floor.jpg"):
+		floor_mat.albedo_texture = load("res://textures/floor.jpg")
+		floor_mat.uv1_triplanar = true
+		floor_mat.uv1_triplanar_sharpness = 1.0
+		floor_mat.uv1_scale = Vector3(0.5, 0.5, 0.5)
+		floor_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	else:
+		floor_mat.albedo_color = Color(0.3, 0.3, 0.3)
+	
+	# Matériau plafond pour la face inférieure du sol N2 (= plafond vu depuis N1)
+	var ceil_under_mat := StandardMaterial3D.new()
+	if ResourceLoader.exists("res://textures/ceiling_cut.jpg"):
+		ceil_under_mat.albedo_texture = load("res://textures/ceiling_cut.jpg")
+		ceil_under_mat.uv1_triplanar = true
+		ceil_under_mat.uv1_triplanar_sharpness = 1.0
+		ceil_under_mat.uv1_scale = Vector3(0.5, 0.5, 0.5)
+		ceil_under_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	else:
+		ceil_under_mat.albedo_color = Color(0.4, 0.4, 0.42)
 	
 	for rect: Array in sol_rects:
 		var col: int = rect[0]
@@ -1542,12 +1570,21 @@ func _build_floor_2() -> void:
 		var w: int = rect[2]
 		var h: int = rect[3]
 		
+		# Sol N2 (face du dessus = texture sol)
 		var f_mesh := MeshInstance3D.new()
 		var f_box := BoxMesh.new()
 		f_box.size = Vector3(w * SCALE, 1.0, h * SCALE)
 		f_mesh.mesh = f_box
 		f_mesh.position = Vector3((col + w / 2.0) * SCALE, FLOOR_2_HEIGHT - 0.5, (row + h / 2.0) * SCALE)
 		f_mesh.material_override = floor_mat
+		
+		# Plafond N1 (fine dalle juste en dessous du sol N2, texture plafond)
+		var c_under := MeshInstance3D.new()
+		var c_under_box := BoxMesh.new()
+		c_under_box.size = Vector3(w * SCALE, 0.05, h * SCALE)
+		c_under.mesh = c_under_box
+		c_under.position = Vector3((col + w / 2.0) * SCALE, FLOOR_2_HEIGHT - 1.0, (row + h / 2.0) * SCALE)
+		c_under.material_override = ceil_under_mat
 		
 		var f_body := StaticBody3D.new()
 		var f_col := CollisionShape3D.new()
@@ -1557,6 +1594,7 @@ func _build_floor_2() -> void:
 		f_body.add_child(f_col)
 		f_body.position = f_mesh.position
 		add_child(f_mesh)
+		add_child(c_under)
 		add_child(f_body)
 	
 	# Plafond etage 2
@@ -1572,7 +1610,14 @@ func _build_floor_2() -> void:
 		c_mesh.mesh = c_box
 		c_mesh.position = Vector3((col + w / 2.0) * SCALE, FLOOR_2_HEIGHT + WALL_HEIGHT + 0.5, (row + h / 2.0) * SCALE)
 		var ceil_mat := StandardMaterial3D.new()
-		ceil_mat.albedo_color = Color(0.4, 0.4, 0.42)
+		if ResourceLoader.exists("res://textures/ceiling_cut.jpg"):
+			ceil_mat.albedo_texture = load("res://textures/ceiling_cut.jpg")
+			ceil_mat.uv1_triplanar = true
+			ceil_mat.uv1_triplanar_sharpness = 1.0
+			ceil_mat.uv1_scale = Vector3(0.5, 0.5, 0.5)
+			ceil_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		else:
+			ceil_mat.albedo_color = Color(0.4, 0.4, 0.42)
 		c_mesh.material_override = ceil_mat
 		
 		var c_body := StaticBody3D.new()
@@ -1598,7 +1643,14 @@ func _build_floor_2() -> void:
 		wall.mesh = wall_box
 		wall.position = Vector3((col + w / 2.0) * SCALE, FLOOR_2_HEIGHT + WALL_HEIGHT / 2.0, (row + h / 2.0) * SCALE)
 		var wall_mat := StandardMaterial3D.new()
-		wall_mat.albedo_color = Color(0.45, 0.45, 0.5)
+		if ResourceLoader.exists("res://textures/wall.jpg"):
+			wall_mat.albedo_texture = load("res://textures/wall.jpg")
+			wall_mat.uv1_triplanar = true
+			wall_mat.uv1_triplanar_sharpness = 1.0
+			wall_mat.uv1_scale = Vector3(0.3, 0.3, 0.3)
+			wall_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		else:
+			wall_mat.albedo_color = Color(0.45, 0.45, 0.5)
 		wall.material_override = wall_mat
 		
 		var wall_body := StaticBody3D.new()
@@ -1943,7 +1995,14 @@ func _build_walls(rectangles: Array, rows: int) -> void:
 		)
 		
 		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.45, 0.45, 0.5)
+		if ResourceLoader.exists("res://textures/wall.jpg"):
+			mat.albedo_texture = load("res://textures/wall.jpg")
+			mat.uv1_triplanar = true
+			mat.uv1_triplanar_sharpness = 1.0
+			mat.uv1_scale = Vector3(0.3, 0.3, 0.3)
+			mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		else:
+			mat.albedo_color = Color(0.45, 0.45, 0.5)
 		wall.material_override = mat
 		
 		var body := StaticBody3D.new()
