@@ -284,6 +284,103 @@ func build_whiteboards_at_height(rectangles: Array, grid_data: Array, grid_rows:
 
 
 # ---------------------------------------------------------------------------
+# PCs from map (dark blue pixels, type 9)
+# ---------------------------------------------------------------------------
+
+## Build PC desk+screen at each dark-blue rectangle, flush against adjacent wall.
+func build_pcs(rectangles: Array, grid_data: Array, grid_rows: int, grid_cols: int, y_offset: float = 0.0) -> Array:
+	var s := GameConfig.SCALE
+	var pcs: Array = []
+
+	for rect: Array in rectangles:
+		var col: int = rect[0]; var row: int = rect[1]
+		var w: int   = rect[2]; var h: int   = rect[3]
+		var cx: float = (col + w / 2.0) * s
+		var cz: float = (row + h / 2.0) * s
+
+		# Detect adjacent wall direction
+		var wall_north := false
+		var wall_south := false
+		var wall_west  := false
+		var wall_east  := false
+		var center_col: int = col + w / 2
+		var center_row: int = row + h / 2
+
+		if row - 1 >= 0 and grid_data[row - 1][center_col] == 1:
+			wall_north = true
+		if row + h < grid_rows and grid_data[row + h][center_col] == 1:
+			wall_south = true
+		if col - 1 >= 0 and grid_data[center_row][col - 1] == 1:
+			wall_west = true
+		if col + w < grid_cols and grid_data[center_row][col + w] == 1:
+			wall_east = true
+
+		# Orient PC to face away from wall
+		var rot_y: float = 0.0
+		var pos_x: float = cx
+		var pos_z: float = cz
+		var desk_depth: float = 0.6
+		if wall_north:
+			rot_y = PI           # desk against north wall, screen faces south
+			pos_z = row * s + desk_depth / 2.0
+		elif wall_south:
+			rot_y = 0.0          # desk against south wall, screen faces north
+			pos_z = (row + h) * s - desk_depth / 2.0
+		elif wall_west:
+			rot_y = -PI / 2.0    # desk against west wall, screen faces east
+			pos_x = col * s + desk_depth / 2.0
+		elif wall_east:
+			rot_y = PI / 2.0     # desk against east wall, screen faces west
+			pos_x = (col + w) * s - desk_depth / 2.0
+		else:
+			rot_y = 0.0
+			pos_z = row * s + desk_depth / 2.0
+
+		var pc := Node3D.new()
+		pc.position = Vector3(pos_x, y_offset, pos_z)
+		pc.rotation.y = rot_y
+		pc.set_meta("is_pc", true)
+
+		# Desk
+		var desk := MeshInstance3D.new()
+		var desk_box := BoxMesh.new()
+		desk_box.size = Vector3(1.2, 0.8, desk_depth)
+		desk.mesh = desk_box
+		desk.position.y = 0.4
+		var desk_mat := StandardMaterial3D.new()
+		desk_mat.albedo_color = Color(0.35, 0.25, 0.15)
+		desk.material_override = desk_mat
+		pc.add_child(desk)
+
+		# Screen
+		var screen := MeshInstance3D.new()
+		var screen_box := BoxMesh.new()
+		screen_box.size = Vector3(0.7, 0.5, 0.05)
+		screen.mesh = screen_box
+		screen.position = Vector3(0, 1.1, 0)
+		screen.material_override = MaterialFactory.create_emissive_material(
+			Color(0.1, 0.2, 0.4), Color(0.2, 0.4, 0.8), 2.0)
+		pc.add_child(screen)
+
+		# Screen light
+		var pc_light := SpotLight3D.new()
+		pc_light.light_color = Color(0.3, 0.5, 1.0)
+		pc_light.light_energy = 5.0
+		pc_light.spot_range = 8.0
+		pc_light.spot_angle = 60.0
+		pc_light.position = Vector3(0, 1.2, 0.5)
+		pc.add_child(pc_light)
+
+		add_child(pc)
+		pcs.append(pc)
+		print("PC at grid=(", col, ",", row, ") wall=",
+			"N" if wall_north else "", "S" if wall_south else "",
+			"W" if wall_west else "", "E" if wall_east else "")
+
+	return pcs
+
+
+# ---------------------------------------------------------------------------
 # Ceiling with holes (terraces, staircases, floor-2 areas)
 # ---------------------------------------------------------------------------
 
@@ -461,9 +558,13 @@ func build_floor_2() -> Dictionary:
 	var f2_wb_rects: Array = MapParser.merge_type(f2_grid, f2_rows, f2_cols, 8)
 	var f2_wb_nodes: Array = build_whiteboards_at_height(f2_wb_rects, f2_grid, f2_rows, f2_cols, f2h)
 
+	# PCs (floor 2)
+	var f2_pc_rects: Array = MapParser.merge_type(f2_grid, f2_rows, f2_cols, 9)
+	var f2_pc_nodes: Array = build_pcs(f2_pc_rects, f2_grid, f2_rows, f2_cols, f2h)
+
 	print("Floor 2: Walls=", f2_walls.size(), " Doors=", f2_door_blocks.size(),
 		" Windows=", f2_windows.size(), " Floor=", sol_rects.size())
-	return {"doors": f2_doors, "whiteboards": f2_wb_nodes}
+	return {"doors": f2_doors, "whiteboards": f2_wb_nodes, "pcs": f2_pc_nodes}
 
 
 # ---------------------------------------------------------------------------

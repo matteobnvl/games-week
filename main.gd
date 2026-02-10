@@ -47,6 +47,7 @@ func _ready() -> void:
 	var coffee_rects: Array = MapParser.merge_type(grid_data, grid_rows, grid_cols, 6)
 	staircase_rects = MapParser.merge_type(grid_data, grid_rows, grid_cols, 7)
 	var whiteboard_rects: Array = MapParser.merge_type(grid_data, grid_rows, grid_cols, 8)
+	var pc_rects: Array = MapParser.merge_type(grid_data, grid_rows, grid_cols, 9)
 
 	var spawn_grid: Vector2 = MapParser.find_spawn(grid_data, grid_rows, grid_cols)
 	spawn_position = Vector3(spawn_grid.x * GameConfig.SCALE, 2.0, spawn_grid.y * GameConfig.SCALE)
@@ -88,6 +89,9 @@ func _ready() -> void:
 	# Whiteboards (wall-mounted)
 	var whiteboard_nodes: Array = world_builder.build_whiteboards(whiteboard_rects, grid_data, grid_rows, grid_cols)
 
+	# PCs (wall-mounted desks from dark blue pixels)
+	var pc_map_nodes: Array = world_builder.build_pcs(pc_rects, grid_data, grid_rows, grid_cols)
+
 	# Floor 1 doors
 	var f1_doors: Array = world_builder.build_doors_from_blocks(door_blocks, grid_data, grid_rows, grid_cols)
 	doors.append_array(f1_doors)
@@ -96,8 +100,10 @@ func _ready() -> void:
 	var f2_result: Dictionary = world_builder.build_floor_2()
 	var f2_doors: Array = f2_result.get("doors", [])
 	var f2_whiteboard_nodes: Array = f2_result.get("whiteboards", [])
+	var f2_pc_nodes: Array = f2_result.get("pcs", [])
 	doors.append_array(f2_doors)
 	whiteboard_nodes.append_array(f2_whiteboard_nodes)
+	pc_map_nodes.append_array(f2_pc_nodes)
 
 	# Staircases
 	world_builder.build_staircases(staircase_rects, grid_cols)
@@ -115,6 +121,7 @@ func _ready() -> void:
 	puzzle_manager.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(puzzle_manager)
 	puzzle_manager.setup(room_positions, spawn_position, game_ui)
+	puzzle_manager.setup_pcs(pc_map_nodes)
 	puzzle_manager.setup_whiteboards(whiteboard_nodes)
 	puzzle_manager.setup_uv_wall_texts(wall_rects)
 

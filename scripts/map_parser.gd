@@ -51,6 +51,10 @@ static func parse_image(path: String) -> Dictionary:
 				line.append(8)            # Dark green = whiteboard
 				red_line.append(false)
 				terrace_line.append(false)
+			elif px.r < 0.1 and px.g < 0.1 and px.b > 0.4 and px.b < 0.6:
+				line.append(9)            # Dark blue (0,0,128) = PC
+				red_line.append(false)
+				terrace_line.append(false)
 			elif px.r < threshold_ratio:
 				line.append(1)            # Dark = wall
 				red_line.append(false)
@@ -107,6 +111,10 @@ static func parse_floor2_image(path: String) -> Dictionary:
 				void_line.append(false)
 			elif px.r < 0.15 and px.g > 0.3 and px.g < 0.7 and px.b < 0.15:
 				line.append(8)            # Dark green = whiteboard
+				red_line.append(false)
+				void_line.append(false)
+			elif px.r < 0.1 and px.g < 0.1 and px.b > 0.4 and px.b < 0.6:
+				line.append(9)            # Dark blue (0,0,128) = PC
 				red_line.append(false)
 				void_line.append(false)
 			elif px.r < threshold_ratio:

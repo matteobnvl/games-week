@@ -3,14 +3,8 @@ extends Node3D
 ## Manages all puzzle systems with decoy objects: UV lamp parts, quiz PCs, stroboscope discs, exit door, and win condition.
 
 # --- Custom fonts (loaded at runtime to avoid import issues) ---
-var font_scary: FontFile
-var font_code: FontFile
-
-func _init() -> void:
-	font_scary = FontFile.new()
-	font_scary.data = FileAccess.get_file_as_bytes("res://fonts/help-me/HelpMe.ttf")
-	font_code = FontFile.new()
-	font_code.data = FileAccess.get_file_as_bytes("res://fonts/shlop/shlop rg.otf")
+var font_scary: FontFile = null
+var font_code: FontFile = null
 
 # --- Shared puzzle state ---
 var found_digits: Array = [-1, -1, -1, -1]
@@ -26,7 +20,7 @@ var uv_parts_collected: int = 0
 var uv_parts: Array = []
 var has_uv_lamp := false
 var uv_mode := false
-var uv_chiffre_mesh: MeshInstance3D = null  # The UV-hidden digit on the chosen whiteboard
+var uv_chiffre_mesh: Label3D = null  # The UV-hidden digit on the chosen whiteboard
 var uv_scary_texts: Array = []               # Array of {mesh: MeshInstance3D, parent: Node3D} for all UV-hidden scary writings
 
 # --- Quiz ---
@@ -109,22 +103,38 @@ const DISC_START := 15         # positions 15-18
 # Setup
 # ---------------------------------------------------------------------------
 
+func _load_fonts() -> void:
+	var scary_path := "res://fonts/help-me/HelpMe.ttf"
+	var code_path := "res://fonts/shlop/shlop rg.otf"
+	if FileAccess.file_exists(scary_path):
+		font_scary = FontFile.new()
+		font_scary.data = FileAccess.get_file_as_bytes(scary_path)
+	else:
+		push_warning("Font not found: " + scary_path)
+	if FileAccess.file_exists(code_path):
+		font_code = FontFile.new()
+		font_code.data = FileAccess.get_file_as_bytes(code_path)
+	else:
+		push_warning("Font not found: " + code_path)
+
+
 func setup(positions: Array, spawn_pos: Vector3, ui: GameUI) -> void:
 	room_positions = positions
 	spawn_position = spawn_pos
 	game_ui = ui
 
+	# Load custom fonts
+	_load_fonts()
+
 	# Generate random exit code + lure messages
 	_generate_exit_code()
 
 	# Randomize decoy indices
-	pc_real_index = randi() % 3
 	strobe_real_index = randi() % 3
 	disc_real_index = randi() % 4
 
 	_place_exit_door()
 	_place_uv_parts()
-	_place_pcs()
 	_place_strobes_and_discs()
 
 	# DEBUG: start with UV lamp ready
@@ -150,27 +160,39 @@ func setup_whiteboards(boards: Array) -> void:
 		wb.set_meta("is_code_board", is_code_board)
 		wb.set_meta("wb_index", i)
 
-		if is_code_board:
-			# Add UV-hidden code text on this whiteboard (invisible until UV lamp)
-			var wb_center_y: float = wb.get_meta("wb_y", GameConfig.WALL_HEIGHT / 2.0)
-			var code_text: String = str(exit_code[0]) + " " + str(exit_code[1]) + " " + str(exit_code[2]) + " " + str(exit_code[3])
-			var chiffre_mesh := MeshInstance3D.new()
-			var tm := TextMesh.new()
-			tm.text = code_text
-			tm.font_size = 120
-			tm.depth = 0.002
-			if font_code:
-				tm.font = font_code
-			chiffre_mesh.mesh = tm
-			chiffre_mesh.position = Vector3(0, wb_center_y, GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.005)
-			var chiffre_mat := StandardMaterial3D.new()
-			chiffre_mat.albedo_color = Color(0.0, 0.0, 0.0, 0.0)  # fully transparent
-			chiffre_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			chiffre_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			chiffre_mat.no_depth_test = true
-			chiffre_mesh.material_override = chiffre_mat
-			wb.add_child(chiffre_mesh)
-			uv_chiffre_mesh = chiffre_mesh
+		   if is_code_board:
+			   # Add UV-hidden code text on this whiteboard (invisible until UV lamp)
+			   var wb_center_y: float = wb.get_meta("wb_y", GameConfig.WALL_HEIGHT / 2.0)
+			   var code_text: String = str(exit_code[0]) + " " + str(exit_code[1]) + " " + str(exit_code[2]) + " " + str(exit_code[3])
+			   var chiffre_label := Label3D.new()
+			   chiffre_label.text = code_text
+			   chiffre_label.font_size = 120
+			   chiffre_label.modulate = Color(0.1, 0.05, 0.4, 0.95)
+			   chiffre_label.no_depth_test = false
+			   chiffre_label.shaded = false
+			   chiffre_label.double_sided = true
+			   chiffre_label.alpha_cut = Label3D.ALPHA_CUT_DISABLED
+			   chiffre_label.visible = false
+			   if font_code:
+				   chiffre_label.font = font_code
+			   chiffre_label.position = Vector3(0, wb_center_y, GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.005)
+			   wb.add_child(chiffre_label)
+			   uv_chiffre_mesh = chiffre_label
+
+			   # Add visible descriptive text to indicate this is the code whiteboard
+			   var desc_label := Label3D.new()
+			   desc_label.text = "CODE POUR LA PORTE"
+			   desc_label.font_size = 60
+			   desc_label.modulate = Color(0.2, 0.2, 0.7, 0.95)
+			   desc_label.no_depth_test = false
+			   desc_label.shaded = false
+			   desc_label.double_sided = true
+			   desc_label.alpha_cut = Label3D.ALPHA_CUT_DISABLED
+			   desc_label.visible = true
+			   if font_code:
+				   desc_label.font = font_code
+			   desc_label.position = Vector3(0, wb_center_y + 0.35, GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.01)
+			   wb.add_child(desc_label)
 		else:
 			# Add a random scary UV message on other whiteboards
 			var scary_msgs: Array = [
@@ -192,88 +214,50 @@ func setup_whiteboards(boards: Array) -> void:
 			var scary_node := _create_uv_text(msg, randi_range(50, 80))
 			scary_node.position = Vector3(0, wb_y, GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.005)
 			wb.add_child(scary_node)
-			uv_scary_texts.append({"node": scary_node, "parent": wb})
-
-			# DEBUG: tall light beam visible through walls
-			var beam := MeshInstance3D.new()
-			var beam_cyl := CylinderMesh.new()
-			beam_cyl.top_radius = 0.05
-			beam_cyl.bottom_radius = 0.05
-			beam_cyl.height = 50.0
-			beam.mesh = beam_cyl
-			beam.position = Vector3(0, 25.0, 0)
-			var beam_mat := StandardMaterial3D.new()
-			beam_mat.albedo_color = Color(0.0, 1.0, 0.0, 0.6)
-			beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			beam_mat.emission_enabled = true
-			beam_mat.emission = Color(0.0, 1.0, 0.0)
-			beam_mat.emission_energy_multiplier = 5.0
-			beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			beam_mat.no_depth_test = true
-			beam.material_override = beam_mat
-			wb.add_child(beam)
+			# ~25% of whiteboard texts are always visible
+			var always_vis: bool = (randf() < 0.25)
+			if always_vis:
+				scary_node.visible = true
+			uv_scary_texts.append({"node": scary_node, "parent": wb, "always": always_vis})
 
 			print("UV WHITEBOARD (digit hidden) at: ", wb.global_position)
 
 	print("Whiteboards: ", boards.size(), " | UV board index: ", whiteboard_code_index)
 
 
-## Create a UV-hidden TextMesh that looks like blood handwriting.
-func _create_uv_text(text: String, font_size: int = 60, add_drips: bool = true) -> Node3D:
-	var container := Node3D.new()
-
-	# Main text
-	var mesh := MeshInstance3D.new()
-	var tm := TextMesh.new()
-	tm.text = text
-	tm.font_size = font_size
-	tm.depth = 0.003
-	if font_scary:
-		tm.font = font_scary
-	mesh.mesh = tm
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.0, 0.0, 0.0, 0.0)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.no_depth_test = true
-	mesh.material_override = mat
-	mesh.set_meta("uv_scary_mat", true)
+## Create a UV-hidden Label3D with random horror font.
+func _create_uv_text(text: String, font_size: int = 60) -> Label3D:
+	var label := Label3D.new()
+	label.text = text
+	label.font_size = font_size
+	label.modulate = Color(0.6, 0.02, 0.02, 0.85)
+	label.no_depth_test = false
+	label.shaded = false
+	label.double_sided = true
+	label.alpha_cut = Label3D.ALPHA_CUT_DISABLED
+	label.visible = false
+	# Randomly pick one of the two fonts
+	if font_scary and font_code:
+		label.font = font_scary if randi() % 2 == 0 else font_code
+	elif font_scary:
+		label.font = font_scary
+	elif font_code:
+		label.font = font_code
+	label.set_meta("uv_scary_label", true)
 
 	# Hand-scrawled distortion: uneven scale and heavy tilt
 	var sx: float = randf_range(0.85, 1.15)
 	var sy: float = randf_range(0.9, 1.2)
-	mesh.scale = Vector3(sx, sy, 1.0)
-	mesh.rotation.z = randf_range(-0.15, 0.15)
-	container.add_child(mesh)
-
-	# Blood drip lines under the text
-	if add_drips:
-		var num_drips: int = randi_range(2, 5)
-		var text_width_approx: float = text.length() * font_size * 0.006
-		for d: int in range(num_drips):
-			var drip := MeshInstance3D.new()
-			var drip_box := BoxMesh.new()
-			var drip_w: float = randf_range(0.02, 0.06)
-			var drip_h: float = randf_range(0.1, 0.5)
-			drip_box.size = Vector3(drip_w, drip_h, 0.003)
-			drip.mesh = drip_box
-			var drip_x: float = randf_range(-text_width_approx / 2.0, text_width_approx / 2.0)
-			drip.position = Vector3(drip_x, -drip_h / 2.0 - 0.05, 0)
-			var drip_mat := StandardMaterial3D.new()
-			drip_mat.albedo_color = Color(0.0, 0.0, 0.0, 0.0)
-			drip_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			drip_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			drip_mat.no_depth_test = true
-			drip.material_override = drip_mat
-			drip.set_meta("uv_scary_mat", true)
-			container.add_child(drip)
-
-	return container
+	label.scale = Vector3(sx, sy, 1.0)
+	label.rotation.z = randf_range(-0.15, 0.15)
+	return label
 
 
-## Recursively set albedo_color on all MeshInstance3D children with uv_scary_mat meta.
+## Recursively set color on all Label3D/MeshInstance3D children with uv_scary meta.
 func _set_uv_color_recursive(node: Node, color: Color) -> void:
-	if node is MeshInstance3D and node.has_meta("uv_scary_mat"):
+	if node is Label3D and node.has_meta("uv_scary_label"):
+		node.modulate = color
+	elif node is MeshInstance3D and node.has_meta("uv_scary_mat"):
 		var mat: StandardMaterial3D = node.material_override
 		if mat:
 			mat.albedo_color = color
@@ -281,70 +265,97 @@ func _set_uv_color_recursive(node: Node, color: Color) -> void:
 		_set_uv_color_recursive(child, color)
 
 
+## Set visibility on Label3D nodes with uv_scary_label meta.
+func _set_uv_visible_recursive(node: Node, vis: bool) -> void:
+	if node is Label3D and node.has_meta("uv_scary_label"):
+		node.visible = vis
+	for child: Node in node.get_children():
+		_set_uv_visible_recursive(child, vis)
+
+
 ## Place scary UV-hidden messages on random walls throughout the map.
 func setup_uv_wall_texts(wall_rects: Array) -> void:
-	var scary_wall_msgs: Array = [
-		"TU N'ES PAS SEUL",
-		"ILS SONT PARTOUT",
-		"FUIS TANT QUE TU PEUX",
-		"PERSONNE NE SORT",
-		"ELLE TE SUIT",
-		"LES OMBRES BOUGENT",
-		"NE FAIS PAS DE BRUIT",
-		"PROMO 2019... DISPARUS",
-		"LE SANG SECHE VITE ICI",
-		"REGARDE DERRIERE TOI",
-		"JE T'ATTENDS",
-		"ON MEURT TOUS ICI",
-		"LE DERNIER A CRI\u00c9",
-		"POURQUOI ES-TU VENU",
-		"JE SUIS SOUS LE SOL",
-		"AIDE",
-	]
+	   var scary_wall_msgs: Array = [
+		   "TU N'ES PAS SEUL",
+		   "ILS SONT PARTOUT",
+		   "FUIS TANT QUE TU PEUX",
+		   "PERSONNE NE SORT",
+		   "ELLE TE SUIT",
+		   "LES OMBRES BOUGENT",
+		   "NE FAIS PAS DE BRUIT",
+		   "PROMO 2019... DISPARUS",
+		   "LE SANG SECHE VITE ICI",
+		   "REGARDE DERRIERE TOI",
+		   "JE T'ATTENDS",
+		   "ON MEURT TOUS ICI",
+		   "LE DERNIER A CRI\u00c9",
+		   "POURQUOI ES-TU VENU",
+		   "JE SUIS SOUS LE SOL",
+		   "AIDE",
+		   # Hints for code whiteboard location
+		   "LE CODE EST SUR UN TABLEAU",
+		   "CHERCHE LE TABLEAU BLANC",
+		   "LE CODE EST ECRIT EN BLEU",
+		   "REGARDE LES TABLEAUX",
+		   "LE CODE POUR LA PORTE EST CACHE",
+		   "UN TABLEAU BLANC CACHE LE CODE",
+		   "CODE -> TABLEAU BLANC",
+		   "CODE POUR LA PORTE: TABLEAU",
+	   ]
 
-	# Pick ~10-15 random walls to put text on
-	var num_texts: int = mini(15, wall_rects.size())
-	var indices: Array = range(wall_rects.size())
-	indices.shuffle()
-	var s := GameConfig.SCALE
+	   # Pick ~30-40 random walls to put text on
+	   var num_texts: int = mini(40, wall_rects.size())
+	   var indices: Array = range(wall_rects.size())
+	   indices.shuffle()
+	   var s := GameConfig.SCALE
 
-	for t: int in range(num_texts):
-		var rect: Array = wall_rects[indices[t]]
-		var col: int = rect[0]; var row: int = rect[1]
-		var w: int = rect[2]; var h: int = rect[3]
+	   for t: int in range(num_texts):
+		   var rect: Array = wall_rects[indices[t]]
+		   var col: int = rect[0]; var row: int = rect[1]
+		   var w: int = rect[2]; var h: int = rect[3]
 
-		# Center of the wall rectangle
-		var cx: float = (col + w / 2.0) * s
-		var cz: float = (row + h / 2.0) * s
+		   # Center of the wall rectangle
+		   var cx: float = (col + w / 2.0) * s
+		   var cz: float = (row + h / 2.0) * s
 
-		var msg: String = scary_wall_msgs[randi() % scary_wall_msgs.size()]
-		var text_node := _create_uv_text(msg, randi_range(40, 90))
+		   var msg: String = scary_wall_msgs[randi() % scary_wall_msgs.size()]
+		   var text_node := _create_uv_text(msg, randi_range(40, 90))
 
-		# Create an anchor node for the text
-		var anchor := Node3D.new()
-		anchor.position = Vector3(cx, 0, cz)
+		   # Create an anchor node for the text
+		   var anchor := Node3D.new()
+		   anchor.position = Vector3(cx, 0, cz)
 
-		# Place text at varying heights on the wall
-		var text_y: float = randf_range(0.8, GameConfig.WALL_HEIGHT - 0.3)
-		# Small offset from wall face so it doesn't z-fight
-		var offset_z: float = 0.08
+		   # Place text at varying heights on the wall
+		   var text_y: float = randf_range(0.8, GameConfig.WALL_HEIGHT - 0.3)
+		   # Offset must be larger than half the wall thickness to sit on the surface
+		   var wall_half_w: float = w * s / 2.0
+		   var wall_half_h: float = h * s / 2.0
+		   var offset_z: float
 
-		# Orient based on wall shape
-		if w > h:
-			text_node.position = Vector3(0, text_y, offset_z)
-			if randi() % 2 == 0:
-				anchor.rotation.y = PI
-		else:
-			text_node.position = Vector3(0, text_y, offset_z)
-			anchor.rotation.y = PI / 2.0
-			if randi() % 2 == 0:
-				anchor.rotation.y = -PI / 2.0
+		   # Orient based on wall shape
+		   if w > h:
+			   # Horizontal wall — text on north or south face
+			   offset_z = wall_half_h + 0.02
+			   text_node.position = Vector3(0, text_y, offset_z)
+			   if randi() % 2 == 0:
+				   anchor.rotation.y = PI
+		   else:
+			   # Vertical wall — text on east or west face
+			   offset_z = wall_half_w + 0.02
+			   text_node.position = Vector3(0, text_y, offset_z)
+			   anchor.rotation.y = PI / 2.0
+			   if randi() % 2 == 0:
+				   anchor.rotation.y = -PI / 2.0
 
-		anchor.add_child(text_node)
-		add_child(anchor)
-		uv_scary_texts.append({"node": text_node, "parent": anchor})
+		   anchor.add_child(text_node)
+		   add_child(anchor)
+		   # ~20% of wall texts are always visible
+		   var always_vis: bool = (randf() < 0.20)
+		   if always_vis:
+			   text_node.visible = true
+		   uv_scary_texts.append({"node": text_node, "parent": anchor, "always": always_vis})
 
-	print("UV scary wall texts placed: ", num_texts)
+	   print("UV scary wall texts placed: ", num_texts)
 
 
 func _get_room_pos(index: int) -> Vector3:
@@ -489,42 +500,72 @@ func update_uv_tableau(player_pos: Vector3) -> void:
 			var wb: Node3D = whiteboard_nodes[whiteboard_code_index]
 			var wb_pos: Vector3 = wb.global_position
 			var dist_xz: float = Vector2(player_pos.x - wb_pos.x, player_pos.z - wb_pos.z).length()
-			var mat: StandardMaterial3D = uv_chiffre_mesh.material_override
 
 			if uv_mode and has_uv_lamp and dist_xz < 6.0:
 				var reveal: float = clampf(1.0 - (dist_xz - 2.0) / 4.0, 0.0, 1.0)
-				mat.albedo_color = Color(0.1, 0.05, 0.4, reveal * 0.95)
+				uv_chiffre_mesh.visible = true
+				uv_chiffre_mesh.modulate = Color(0.1, 0.05, 0.4, reveal * 0.95)
 				if reveal > 0.5 and found_digits[0] == -1:
 					found_digits[0] = exit_code[0]
 					_show_message("Code trouvé sur le tableau : " + str(exit_code[0]) + " " + str(exit_code[1]) + " " + str(exit_code[2]) + " " + str(exit_code[3]))
 					_update_quest()
 			else:
-				mat.albedo_color = Color(0.0, 0.0, 0.0, 0.0)
+				uv_chiffre_mesh.visible = false
 
 	# --- Scary UV texts (whiteboards + walls) ---
 	for entry: Dictionary in uv_scary_texts:
 		var scary_node: Node3D = entry["node"]
 		var parent: Node3D = entry["parent"]
+		var always: bool = entry.get("always", false)
 		if not scary_node or not is_instance_valid(scary_node):
 			continue
 		if not parent or not is_instance_valid(parent):
 			continue
+
+		# Always-visible texts stay on permanently
+		if always:
+			continue
+
 		var p_pos: Vector3 = parent.global_position
 		var d_xz: float = Vector2(player_pos.x - p_pos.x, player_pos.z - p_pos.z).length()
 
 		if uv_mode and has_uv_lamp and d_xz < 5.0:
 			var r: float = clampf(1.0 - (d_xz - 1.5) / 3.5, 0.0, 1.0)
-			# Blood red - vary slightly per text for organic feel
 			var red_val: float = randf_range(0.5, 0.8)
 			var blood_color := Color(red_val, 0.02, 0.02, r * 0.92)
-			_set_uv_color_recursive(scary_node, blood_color)
+			scary_node.visible = true
+			scary_node.modulate = blood_color
 		else:
-			_set_uv_color_recursive(scary_node, Color(0.0, 0.0, 0.0, 0.0))
+			scary_node.visible = false
 
 
 # ---------------------------------------------------------------------------
-# PC Quiz (3 PCs: 1 real + 2 decoys)
+# PC Quiz (map-placed PCs: 1 real + rest are decoys)
 # ---------------------------------------------------------------------------
+
+## Setup PCs from map-placed nodes. One random PC becomes the real quiz PC.
+func setup_pcs(pcs: Array) -> void:
+	pc_nodes = pcs
+	if pcs.size() == 0:
+		print("WARNING: No PCs found on map!")
+		return
+
+	# Pick one random PC as the real one
+	pc_real_index = randi() % pcs.size()
+	for i: int in range(pcs.size()):
+		var pc: Node3D = pcs[i]
+		var is_real: bool = (i == pc_real_index)
+		pc.set_meta("is_real", is_real)
+		pc.set_meta("pc_index", i)
+
+		# Find the SpotLight3D child to store in pc_screen_lights
+		for child: Node in pc.get_children():
+			if child is SpotLight3D:
+				pc_screen_lights.append(child)
+				break
+
+	print("PCs from map: ", pcs.size(), " | Real PC index: ", pc_real_index)
+
 
 func _place_pcs() -> void:
 	for i: int in range(3):
@@ -988,9 +1029,7 @@ func _reset_puzzles() -> void:
 
 	# Reset UV whiteboard digit visibility
 	if uv_chiffre_mesh and is_instance_valid(uv_chiffre_mesh):
-		var mat: StandardMaterial3D = uv_chiffre_mesh.material_override
-		mat.albedo_color = Color(0.9, 0.9, 0.9, 0.0)
-		mat.emission_energy_multiplier = 0.0
+		uv_chiffre_mesh.visible = false
 
 	# Update PC real/fake status
 	for i: int in range(pc_nodes.size()):
