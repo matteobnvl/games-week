@@ -24,7 +24,7 @@ func toggle() -> void:
 	else:
 		target_angle = 90.0
 		is_open = true
-	if audio and audio.stream:
+	if audio and audio.stream and randf() < 0.35:
 		audio.play()
 
 

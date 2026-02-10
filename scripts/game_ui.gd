@@ -18,6 +18,15 @@ var quiz_panel: PanelContainer
 var quiz_question_label: Label
 var quiz_answers_container: VBoxContainer
 
+# Code Entry UI
+var code_panel: PanelContainer
+var code_digit_labels: Array = []
+var code_digit_values: Array = [-1, -1, -1, -1]
+var code_locked_slots: Array = [false, false, false, false]
+var code_active_slot: int = -1
+var code_confirm_btn: Button
+var code_cancel_btn: Button
+var code_entry_active: bool = false
 # Pause menu
 var pause_panel: PanelContainer
 var _music_slider: HSlider
@@ -29,6 +38,7 @@ func _ready() -> void:
 	_create_bars()
 	_create_labels()
 	_create_quiz_panel()
+	_create_code_panel()
 	_create_pause_menu()
 
 
@@ -316,6 +326,8 @@ func update_quest(current_quest: String, found_digits: Array) -> void:
 	for i: int in range(4):
 		if found_digits[i] != -1:
 			code_text += str(found_digits[i]) + " "
+		elif i == 3:
+			code_text += "? "
 		else:
 			code_text += "_ "
 	code_label.text = code_text
@@ -338,6 +350,184 @@ func hide_interact() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Code Entry Panel
+# ---------------------------------------------------------------------------
+
+func _create_code_panel() -> void:
+	code_panel = PanelContainer.new()
+	code_panel.set_anchors_preset(Control.PRESET_CENTER)
+	code_panel.position = Vector2(-260, -210)
+	code_panel.custom_minimum_size = Vector2(520, 400)
+	code_panel.visible = false
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.08, 0.12, 0.95)
+	style.border_color = Color(0.5, 0.1, 0.1)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	code_panel.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 18)
+
+	# Title
+	var title := Label.new()
+	title.text = "ENTREZ LE CODE"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.9, 0.3, 0.3))
+	vbox.add_child(title)
+
+	# Digit slots
+	var digits_hbox := HBoxContainer.new()
+	digits_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	digits_hbox.add_theme_constant_override("separation", 20)
+
+	for i: int in range(4):
+		var slot_panel := PanelContainer.new()
+		slot_panel.custom_minimum_size = Vector2(70, 80)
+		var slot_style := StyleBoxFlat.new()
+		slot_style.bg_color = Color(0.15, 0.15, 0.2)
+		slot_style.border_color = Color(0.4, 0.4, 0.5)
+		slot_style.set_border_width_all(2)
+		slot_style.set_corner_radius_all(4)
+		slot_panel.add_theme_stylebox_override("panel", slot_style)
+
+		var digit_label := Label.new()
+		digit_label.text = "_"
+		digit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		digit_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		digit_label.add_theme_font_size_override("font_size", 40)
+		digit_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+		slot_panel.add_child(digit_label)
+
+		digits_hbox.add_child(slot_panel)
+		code_digit_labels.append(digit_label)
+
+	vbox.add_child(digits_hbox)
+
+	# Instruction
+	var instruction := Label.new()
+	instruction.text = "Cliquez sur un chiffre ou tapez 0-9"
+	instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	instruction.add_theme_font_size_override("font_size", 14)
+	instruction.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	vbox.add_child(instruction)
+
+	# Number buttons (0-9)
+	var num_hbox := HBoxContainer.new()
+	num_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	num_hbox.add_theme_constant_override("separation", 5)
+	for n: int in range(10):
+		var btn := Button.new()
+		btn.text = str(n)
+		btn.custom_minimum_size = Vector2(42, 42)
+		btn.pressed.connect(_on_code_number_pressed.bind(n))
+		num_hbox.add_child(btn)
+	vbox.add_child(num_hbox)
+
+	# Action buttons
+	var action_hbox := HBoxContainer.new()
+	action_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	action_hbox.add_theme_constant_override("separation", 20)
+
+	code_confirm_btn = Button.new()
+	code_confirm_btn.text = "Confirmer"
+	code_confirm_btn.custom_minimum_size = Vector2(150, 45)
+	action_hbox.add_child(code_confirm_btn)
+
+	code_cancel_btn = Button.new()
+	code_cancel_btn.text = "Annuler"
+	code_cancel_btn.custom_minimum_size = Vector2(150, 45)
+	action_hbox.add_child(code_cancel_btn)
+
+	vbox.add_child(action_hbox)
+
+	code_panel.add_child(vbox)
+	add_child(code_panel)
+
+
+func open_code_panel(found_digits: Array) -> void:
+	code_entry_active = true
+	code_panel.visible = true
+	code_active_slot = -1
+
+	for i: int in range(4):
+		if found_digits[i] != -1:
+			code_digit_values[i] = found_digits[i]
+			code_digit_labels[i].text = str(found_digits[i])
+			code_digit_labels[i].add_theme_color_override("font_color", Color(0.3, 0.9, 0.3))
+			code_locked_slots[i] = true
+		else:
+			code_digit_values[i] = -1
+			code_digit_labels[i].text = "_"
+			code_digit_labels[i].add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+			code_locked_slots[i] = false
+
+	_select_next_empty_slot()
+
+
+func close_code_panel() -> void:
+	code_entry_active = false
+	code_panel.visible = false
+	code_active_slot = -1
+
+
+func _select_next_empty_slot() -> void:
+	for i: int in range(4):
+		if not code_locked_slots[i] and code_digit_values[i] == -1:
+			_select_slot(i)
+			return
+	# All filled or locked, select last unlocked
+	for i: int in range(3, -1, -1):
+		if not code_locked_slots[i]:
+			_select_slot(i)
+			return
+
+
+func _select_slot(index: int) -> void:
+	# Deselect previous
+	if code_active_slot >= 0 and code_active_slot < 4:
+		var prev_parent: PanelContainer = code_digit_labels[code_active_slot].get_parent()
+		var prev_style: StyleBoxFlat = prev_parent.get_theme_stylebox("panel")
+		prev_style.border_color = Color(0.4, 0.4, 0.5)
+
+	code_active_slot = index
+
+	# Highlight selected
+	if index >= 0 and index < 4:
+		var parent: PanelContainer = code_digit_labels[index].get_parent()
+		var cur_style: StyleBoxFlat = parent.get_theme_stylebox("panel")
+		cur_style.border_color = Color(1.0, 0.8, 0.2)
+
+
+func _on_code_number_pressed(num: int) -> void:
+	if code_active_slot < 0 or code_active_slot >= 4:
+		return
+	if code_locked_slots[code_active_slot]:
+		return
+	code_digit_values[code_active_slot] = num
+	code_digit_labels[code_active_slot].text = str(num)
+	_select_next_empty_slot()
+
+
+func get_entered_code() -> Array:
+	return code_digit_values.duplicate()
+
+
+func handle_code_key_input(keycode: int) -> void:
+	if not code_entry_active:
+		return
+	if keycode >= KEY_0 and keycode <= KEY_9:
+		var num: int = keycode - KEY_0
+		_on_code_number_pressed(num)
+	elif keycode >= KEY_KP_0 and keycode <= KEY_KP_9:
+		var num: int = keycode - KEY_KP_0
+		_on_code_number_pressed(num)
+	elif keycode == KEY_BACKSPACE:
+		if code_active_slot >= 0 and not code_locked_slots[code_active_slot]:
+			code_digit_values[code_active_slot] = -1
+			code_digit_labels[code_active_slot].text = "_"
 # Game Over
 # ---------------------------------------------------------------------------
 

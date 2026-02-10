@@ -162,9 +162,9 @@ func _update_stamina(delta: float, is_moving: bool) -> void:
 # Flashlight (call from main._physics_process)
 # ---------------------------------------------------------------------------
 
-func update_flashlight(delta: float, uv_mode: bool, has_uv_lamp: bool, strobe_active: bool, has_strobe: bool) -> void:
+func update_flashlight(delta: float, uv_mode: bool, has_uv_lamp: bool, strobe_active: bool, has_strobe: bool, strobe_is_real: bool = true) -> void:
 	var was_recharging := is_recharging
-	if Input.is_key_pressed(KEY_R):
+  if Input.is_key_pressed(KEY_R):
 		is_recharging = true
 		flashlight.visible = false
 		battery += GameConfig.BATTERY_RECHARGE_SPEED * delta
@@ -179,9 +179,12 @@ func update_flashlight(delta: float, uv_mode: bool, has_uv_lamp: bool, strobe_ac
 			ratchet_audio.stop()
 		if flashlight_on and battery > 0:
 			flashlight.visible = true
-			battery -= GameConfig.BATTERY_DRAIN * delta
-			battery = max(battery, 0.0)
-		if battery <= 0:
+			# Don't drain battery during UV/strobe (they use their own power)
+			var special_mode: bool = (uv_mode and has_uv_lamp) or (strobe_active and has_strobe)
+			if not special_mode:
+				battery -= GameConfig.BATTERY_DRAIN * delta
+				battery = max(battery, 0.0)
+		else:
 			flashlight.visible = false
 
 	var ratio: float = battery / GameConfig.BATTERY_MAX
@@ -189,8 +192,9 @@ func update_flashlight(delta: float, uv_mode: bool, has_uv_lamp: bool, strobe_ac
 	flashlight.spot_range = lerpf(GameConfig.FLASH_RANGE_MIN, GameConfig.FLASH_RANGE_MAX, ratio)
 	flashlight.spot_angle = lerpf(GameConfig.FLASH_ANGLE_MIN, GameConfig.FLASH_ANGLE_MAX, ratio)
 
-	# UV mode overrides
+	# UV mode overrides (force flashlight visible)
 	if uv_mode and has_uv_lamp:
+		flashlight.visible = true
 		flashlight.light_color = Color(0.4, 0.1, 1.0)
 		flashlight.spot_range = 12.0
 		flashlight.light_energy = 3.0
@@ -205,11 +209,20 @@ func update_flashlight(delta: float, uv_mode: bool, has_uv_lamp: bool, strobe_ac
 		elif flashlight_on:
 			flashlight.visible = true
 
-	# Strobe effect overrides everything
+	# Strobe effect overrides everything (force flashlight visible)
 	if strobe_active and has_strobe:
-		var strobe_blink: bool = fmod(Time.get_ticks_msec() / 50.0, 1.0) > 0.5
-		flashlight.light_energy = 8.0 if strobe_blink else 0.5
-		flashlight.light_color = Color(1.0, 1.0, 1.0)
+		flashlight.visible = true
+		if strobe_is_real:
+			# Real strobe: clean white blink at 50ms interval, high energy
+			var strobe_blink: bool = fmod(Time.get_ticks_msec() / 50.0, 1.0) > 0.5
+			flashlight.light_energy = 8.0 if strobe_blink else 0.5
+			flashlight.light_color = Color(1.0, 1.0, 1.0)
+		else:
+			# Fake strobe: erratic sinusoidal yellow-pale buzz, low energy
+			var t: float = Time.get_ticks_msec() / 1000.0
+			var buzz: float = (sin(t * 12.0) * 0.5 + 0.5) * (sin(t * 37.0) * 0.3 + 0.7)
+			flashlight.light_energy = 0.4 + buzz * 0.8
+			flashlight.light_color = Color(1.0, 0.95, 0.5)
 
 
 # ---------------------------------------------------------------------------
