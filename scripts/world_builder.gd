@@ -446,6 +446,7 @@ func _create_door(block: Array, grid_data: Array, grid_rows: int, grid_cols: int
 	door.audio = AudioStreamPlayer3D.new()
 	door.audio.max_distance = 20.0
 	door.audio.unit_size = 4.0
+	door.audio.bus = "Environment"
 	if sound:
 		door.audio.stream = sound
 	door.audio.position = door.mesh.position

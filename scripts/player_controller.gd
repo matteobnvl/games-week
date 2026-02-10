@@ -5,12 +5,15 @@ extends CharacterBody3D
 var camera: Camera3D
 var flashlight: SpotLight3D
 var footstep_audio: AudioStreamPlayer
+var ratchet_audio: AudioStreamPlayer
+var breathing_audio: AudioStreamPlayer
 
 var flashlight_on := true
 var stamina: float = GameConfig.STAMINA_MAX
 var is_sprinting := false
 var battery: float = GameConfig.BATTERY_MAX
 var is_recharging := false
+var _was_sprinting := false  # Track sprint state changes for breathing
 
 ## Set to false to freeze the player (quiz, win screen, etc.).
 var movement_enabled := true
@@ -52,7 +55,28 @@ func _ready() -> void:
 		if step_sound:
 			footstep_audio.stream = step_sound
 	footstep_audio.volume_db = -5.0
+	footstep_audio.bus = "Environment"
 	add_child(footstep_audio)
+
+	# Ratchet sound (flashlight recharge)
+	ratchet_audio = AudioStreamPlayer.new()
+	if ResourceLoader.exists(GameConfig.RATCHET_SOUND_PATH):
+		var ratchet_sound: Resource = load(GameConfig.RATCHET_SOUND_PATH)
+		if ratchet_sound:
+			ratchet_audio.stream = ratchet_sound
+	ratchet_audio.volume_db = -3.0
+	ratchet_audio.bus = "Environment"
+	add_child(ratchet_audio)
+
+	# Heavy breathing (after sprinting)
+	breathing_audio = AudioStreamPlayer.new()
+	if ResourceLoader.exists(GameConfig.HEAVY_BREATHING_SOUND_PATH):
+		var breath_sound: Resource = load(GameConfig.HEAVY_BREATHING_SOUND_PATH)
+		if breath_sound:
+			breathing_audio.stream = breath_sound
+	breathing_audio.volume_db = 0.0
+	breathing_audio.bus = "Environment"
+	add_child(breathing_audio)
 
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -117,12 +141,18 @@ func _update_stamina(delta: float, is_moving: bool) -> void:
 	var wants_sprint: bool = Input.is_key_pressed(KEY_SHIFT)
 	if wants_sprint and is_moving and stamina > GameConfig.STAMINA_MIN_TO_SPRINT:
 		is_sprinting = true
+		_was_sprinting = true
 		stamina -= GameConfig.STAMINA_DRAIN * delta
 		stamina = max(stamina, 0.0)
 		if stamina <= 0.0:
 			is_sprinting = false
 	else:
 		is_sprinting = false
+		# Trigger heavy breathing when stopping sprint
+		if _was_sprinting and breathing_audio and breathing_audio.stream:
+			if not breathing_audio.playing:
+				breathing_audio.play()
+			_was_sprinting = false
 		var regen_rate: float = GameConfig.STAMINA_REGEN if not is_moving else GameConfig.STAMINA_REGEN * 0.5
 		stamina += regen_rate * delta
 		stamina = min(stamina, GameConfig.STAMINA_MAX)
@@ -133,13 +163,20 @@ func _update_stamina(delta: float, is_moving: bool) -> void:
 # ---------------------------------------------------------------------------
 
 func update_flashlight(delta: float, uv_mode: bool, has_uv_lamp: bool, strobe_active: bool, has_strobe: bool, strobe_is_real: bool = true) -> void:
-	if Input.is_key_pressed(KEY_R):
+	var was_recharging := is_recharging
+  if Input.is_key_pressed(KEY_R):
 		is_recharging = true
 		flashlight.visible = false
 		battery += GameConfig.BATTERY_RECHARGE_SPEED * delta
 		battery = min(battery, GameConfig.BATTERY_MAX)
+		# Loop ratchet sound while recharging
+		if ratchet_audio and ratchet_audio.stream and not ratchet_audio.playing:
+			ratchet_audio.play()
 	else:
 		is_recharging = false
+		# Stop ratchet when key released
+		if was_recharging and ratchet_audio and ratchet_audio.playing:
+			ratchet_audio.stop()
 		if flashlight_on and battery > 0:
 			flashlight.visible = true
 			# Don't drain battery during UV/strobe (they use their own power)
@@ -193,10 +230,10 @@ func update_flashlight(delta: float, uv_mode: bool, has_uv_lamp: bool, strobe_ac
 # ---------------------------------------------------------------------------
 
 func _update_footsteps(is_moving: bool) -> void:
-	if not footstep_audio:
+	if not footstep_audio or not footstep_audio.stream:
 		return
 	var on_ground: bool = is_on_floor()
-	if is_moving and on_ground:
+	if is_moving and on_ground and not is_recharging:
 		footstep_audio.pitch_scale = 1.4 if is_sprinting else 1.0
 		if not footstep_audio.playing:
 			footstep_audio.play()

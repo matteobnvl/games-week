@@ -27,6 +27,11 @@ var code_active_slot: int = -1
 var code_confirm_btn: Button
 var code_cancel_btn: Button
 var code_entry_active: bool = false
+# Pause menu
+var pause_panel: PanelContainer
+var _music_slider: HSlider
+var _monster_slider: HSlider
+var _environment_slider: HSlider
 
 
 func _ready() -> void:
@@ -34,6 +39,7 @@ func _ready() -> void:
 	_create_labels()
 	_create_quiz_panel()
 	_create_code_panel()
+	_create_pause_menu()
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +154,113 @@ func _create_quiz_panel() -> void:
 
 	quiz_panel.add_child(quiz_vbox)
 	add_child(quiz_panel)
+
+
+func _create_pause_menu() -> void:
+	pause_panel = PanelContainer.new()
+	pause_panel.set_anchors_preset(Control.PRESET_CENTER)
+	pause_panel.position = Vector2(-200, -180)
+	pause_panel.custom_minimum_size = Vector2(400, 340)
+	pause_panel.visible = false
+	pause_panel.z_index = 200
+
+	# Dark background style
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.08, 0.12, 0.95)
+	style.border_color = Color(0.4, 0.4, 0.5, 0.8)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(20)
+	pause_panel.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 20)
+
+	# Title
+	var title := Label.new()
+	title.text = "PAUSE"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+	vbox.add_child(title)
+
+	# Music volume
+	_music_slider = _create_volume_slider(vbox, "Musique", "Music")
+
+	# Monster volume
+	_monster_slider = _create_volume_slider(vbox, "Monstre", "Monster")
+
+	# Environment volume
+	_environment_slider = _create_volume_slider(vbox, "Environnement", "Environment")
+
+	# Resume button
+	var resume_btn := Button.new()
+	resume_btn.text = "Reprendre"
+	resume_btn.custom_minimum_size = Vector2(200, 40)
+	resume_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	resume_btn.add_theme_font_size_override("font_size", 18)
+	resume_btn.pressed.connect(func() -> void:
+		hide_pause_menu()
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		get_tree().paused = false
+	)
+	vbox.add_child(resume_btn)
+
+	# Quit button
+	var quit_btn := Button.new()
+	quit_btn.text = "Menu Principal"
+	quit_btn.custom_minimum_size = Vector2(200, 40)
+	quit_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	quit_btn.add_theme_font_size_override("font_size", 18)
+	quit_btn.pressed.connect(func() -> void:
+		get_tree().paused = false
+		get_tree().change_scene_to_file("res://menu.tscn")
+	)
+	vbox.add_child(quit_btn)
+
+	pause_panel.add_child(vbox)
+	add_child(pause_panel)
+
+
+func _create_volume_slider(parent: VBoxContainer, label_text: String, bus_name: String) -> HSlider:
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 10)
+
+	var lbl := Label.new()
+	lbl.text = label_text
+	lbl.custom_minimum_size = Vector2(140, 0)
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
+	hbox.add_child(lbl)
+
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.value = 1.0
+	slider.custom_minimum_size = Vector2(180, 20)
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.value_changed.connect(func(val: float) -> void:
+		var bus_idx: int = AudioServer.get_bus_index(bus_name)
+		if bus_idx >= 0:
+			if val <= 0.01:
+				AudioServer.set_bus_mute(bus_idx, true)
+			else:
+				AudioServer.set_bus_mute(bus_idx, false)
+				AudioServer.set_bus_volume_db(bus_idx, linear_to_db(val))
+	)
+	hbox.add_child(slider)
+
+	parent.add_child(hbox)
+	return slider
+
+
+func show_pause_menu() -> void:
+	pause_panel.visible = true
+
+
+func hide_pause_menu() -> void:
+	pause_panel.visible = false
 
 
 # ---------------------------------------------------------------------------
@@ -415,3 +528,41 @@ func handle_code_key_input(keycode: int) -> void:
 		if code_active_slot >= 0 and not code_locked_slots[code_active_slot]:
 			code_digit_values[code_active_slot] = -1
 			code_digit_labels[code_active_slot].text = "_"
+# Game Over
+# ---------------------------------------------------------------------------
+
+func show_game_over() -> void:
+	var overlay := ColorRect.new()
+	overlay.color = Color(0.3, 0.0, 0.0, 0.0)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.z_index = 100
+	add_child(overlay)
+
+	var death_label := Label.new()
+	death_label.text = "FELIPE T'A ATTRAPE..."
+	death_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	death_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	death_label.set_anchors_preset(Control.PRESET_CENTER)
+	death_label.add_theme_font_size_override("font_size", 52)
+	death_label.add_theme_color_override("font_color", Color(0.9, 0.1, 0.1))
+	death_label.modulate.a = 0.0
+	death_label.z_index = 101
+	add_child(death_label)
+
+	var subtitle := Label.new()
+	subtitle.text = "Tu n'aurais pas du faire de bruit..."
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.set_anchors_preset(Control.PRESET_CENTER)
+	subtitle.position.y = 50
+	subtitle.add_theme_font_size_override("font_size", 22)
+	subtitle.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+	subtitle.modulate.a = 0.0
+	subtitle.z_index = 101
+	add_child(subtitle)
+
+	var tween := create_tween()
+	tween.tween_property(overlay, "color:a", 0.9, 1.5)
+	tween.parallel().tween_property(death_label, "modulate:a", 1.0, 1.5)
+	tween.tween_property(subtitle, "modulate:a", 1.0, 1.0)
+	tween.tween_interval(3.0)
+	tween.tween_callback(func() -> void: get_tree().change_scene_to_file("res://menu.tscn"))
