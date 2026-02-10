@@ -184,6 +184,24 @@ func setup_whiteboards(boards: Array) -> void:
 		wb.set_meta("is_code_board", is_code_board)
 		wb.set_meta("wb_index", i)
 
+		# --- CODE PC VISIBLE ---
+		if i == 0:
+			var pc_label := Label3D.new()
+			pc_label.text = "CODE PC : 1111"
+			pc_label.font_size = 60
+			pc_label.modulate = Color.BLACK
+			pc_label.outline_size = 2
+			if font_code:
+				pc_label.font = font_code
+			var wb_y_pc: float = wb.get_meta("wb_y", GameConfig.WALL_HEIGHT / 2.0)
+			pc_label.position = Vector3(
+				0,
+				wb_y_pc + 0.5,
+				GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.006
+			)
+			wb.add_child(pc_label)
+		# ----------------------
+
 		if is_code_board:
 			# Add UV-hidden code text on this whiteboard (first 2 digits only)
 			var wb_center_y: float = wb.get_meta("wb_y", GameConfig.WALL_HEIGHT / 2.0)
@@ -197,7 +215,11 @@ func setup_whiteboards(boards: Array) -> void:
 			chiffre_label.outline_size = 0
 			chiffre_label.no_depth_test = false
 			chiffre_label.shaded = false
-			chiffre_label.position = Vector3(0, wb_center_y, GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.005)
+			chiffre_label.position = Vector3(
+				0,
+				wb_center_y,
+				GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.005
+			)
 			wb.add_child(chiffre_label)
 			uv_chiffre_mesh = chiffre_label
 		else:
@@ -219,9 +241,14 @@ func setup_whiteboards(boards: Array) -> void:
 			var msg: String = scary_msgs[randi() % scary_msgs.size()]
 			var wb_y: float = wb.get_meta("wb_y", GameConfig.WALL_HEIGHT / 2.0)
 			var scary_node := _create_uv_text(msg, randi_range(50, 80))
-			scary_node.position = Vector3(0, wb_y, GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.005)
+			scary_node.position = Vector3(
+				0,
+				wb_y,
+				GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.005
+			)
 			wb.add_child(scary_node)
 			uv_scary_texts.append({"node": scary_node, "parent": wb})
+
 		if i % 3 == 2:
 			await get_tree().process_frame
 

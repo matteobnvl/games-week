@@ -22,7 +22,7 @@ const STAMINA_MIN_TO_SPRINT := 10.0
 
 # --- Flashlight ---
 const BATTERY_MAX := 100.0
-const BATTERY_DRAIN := 3.0
+const BATTERY_DRAIN := 1.5
 const BATTERY_RECHARGE_SPEED := 10.0
 const FLASH_ENERGY_MAX := 4.0
 const FLASH_ENERGY_MIN := 0.15
@@ -33,7 +33,7 @@ const FLASH_ANGLE_MIN := 15.0
 
 # --- Doors ---
 const DOOR_INTERACT_DISTANCE := 3.5
-const DOOR_OPEN_SPEED := 1.5
+const DOOR_OPEN_SPEED := 0.5
 const DOOR_SOUND_PATH := "res://songs/door_open.ogg"
 
 # --- Footsteps ---
