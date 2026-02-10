@@ -48,9 +48,17 @@ func _ready() -> void:
 	staircase_rects = MapParser.merge_type(grid_data, grid_rows, grid_cols, 7)
 	var whiteboard_rects: Array = MapParser.merge_type(grid_data, grid_rows, grid_cols, 8)
 	var pc_rects: Array = MapParser.merge_type(grid_data, grid_rows, grid_cols, 9)
+	var exit_rects: Array = MapParser.merge_type(grid_data, grid_rows, grid_cols, 10)
 
 	var spawn_grid: Vector2 = MapParser.find_spawn(grid_data, grid_rows, grid_cols)
 	spawn_position = Vector3(spawn_grid.x * GameConfig.SCALE, 2.0, spawn_grid.y * GameConfig.SCALE)
+
+	# --- Exit positions from map (cell value 10) ---
+	var exit_positions: Array = []
+	for rect: Array in exit_rects:
+		var cx: float = (rect[0] + rect[2] / 2.0) * GameConfig.SCALE
+		var cz: float = (rect[1] + rect[3] / 2.0) * GameConfig.SCALE
+		exit_positions.append(Vector3(cx, 0.0, cz))
 
 	# --- Room positions for puzzle objects (floor 1 + floor 2) ---
 	room_positions = MapParser.find_room_positions(grid_data, grid_rows, grid_cols, spawn_position)
@@ -115,7 +123,7 @@ func _ready() -> void:
 	puzzle_manager = PuzzleManager.new()
 	puzzle_manager.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(puzzle_manager)
-	puzzle_manager.setup(room_positions, spawn_position, game_ui, whiteboard_nodes, wall_rects, pc_rects)
+	puzzle_manager.setup(room_positions, spawn_position, game_ui, whiteboard_nodes, wall_rects, pc_rects, exit_positions)
 
 
 	print("Ready! Walls: ", wall_rects.size(), " | Doors: ", doors.size(), " | Rooms: ", room_positions.size())

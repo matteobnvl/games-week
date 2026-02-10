@@ -55,6 +55,10 @@ static func parse_image(path: String) -> Dictionary:
 				line.append(8)            # Dark green = whiteboard
 				red_line.append(false)
 				terrace_line.append(false)
+			elif px.r > 0.3 and px.r < 0.7 and px.g < 0.15 and px.b < 0.15:
+				line.append(10)            # Red green = exit
+				red_line.append(false)
+				terrace_line.append(false)
 			elif px.r < threshold_ratio:
 				line.append(1)            # Dark = wall
 				red_line.append(false)

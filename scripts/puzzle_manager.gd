@@ -116,7 +116,7 @@ const DISC_START := 15         # positions 15-18
 # Setup
 # ---------------------------------------------------------------------------
 
-func setup(positions: Array, spawn_pos: Vector3, ui: GameUI, boards: Array, wall_rects: Array, pc_rects: Array) -> void:
+func setup(positions: Array, spawn_pos: Vector3, ui: GameUI, boards: Array, wall_rects: Array, pc_rects: Array, exit_rects: Array = []) -> void:
 	room_positions = positions
 	spawn_position = spawn_pos
 	game_ui = ui
@@ -130,6 +130,12 @@ func setup(positions: Array, spawn_pos: Vector3, ui: GameUI, boards: Array, wall
 		var cz: float = (rect[1] + rect[3] / 2.0) * s
 		pc_map_positions.append(Vector3(cx, 0.0, cz))
 
+	# Store exit positions from map
+	var exit_map_positions: Array = []
+	if exit_rects.size() > 0:
+		for pos: Vector3 in exit_rects:
+			exit_map_positions.append(pos)
+
 	# Generate random exit code + lure messages
 	_generate_exit_code()
 
@@ -138,7 +144,7 @@ func setup(positions: Array, spawn_pos: Vector3, ui: GameUI, boards: Array, wall
 	strobe_real_index = randi() % 3
 	disc_real_index = randi() % 4
 	
-	_place_exit_door()
+	_place_exit_door(exit_map_positions)
 	
 	# disable strobes
 	#_place_strobes_and_discs()
@@ -419,15 +425,20 @@ func _generate_lure_messages() -> void:
 # Exit Door
 # ---------------------------------------------------------------------------
 
-func _place_exit_door() -> void:
-	var best_pos := Vector3.ZERO
-	var best_dist: float = 0
-	for i: int in range(mini(room_positions.size(), 20)):
-		var d: float = room_positions[i].distance_to(spawn_position)
-		if d > best_dist:
-			best_dist = d
-			best_pos = room_positions[i]
-	exit_door_pos = best_pos
+func _place_exit_door(exit_map_positions: Array = []) -> void:
+	# Use map-defined exit positions if available, otherwise fallback to far room
+	if exit_map_positions.size() > 0:
+		exit_door_pos = exit_map_positions[0]  # Use first exit found on map
+	else:
+		# Fallback: pick farthest room from spawn
+		var best_pos := Vector3.ZERO
+		var best_dist: float = 0
+		for i: int in range(mini(room_positions.size(), 20)):
+			var d: float = room_positions[i].distance_to(spawn_position)
+			if d > best_dist:
+				best_dist = d
+				best_pos = room_positions[i]
+		exit_door_pos = best_pos
 
 	var wh := GameConfig.WALL_HEIGHT
 	# Force Y à 0 pour éviter le décalage d'étage
@@ -440,6 +451,7 @@ func _place_exit_door() -> void:
 	box.size = Vector3(1.5, wh * 0.9, 0.15)
 	door_mesh.mesh = box
 	door_mesh.position = Vector3(base_x, wh * 0.45, base_z)
+	door_mesh.rotation.y = PI / 2.0  # Rotate 90 degrees
 	door_mesh.material_override = MaterialFactory.create_emissive_material(
 		Color(0.5, 0.1, 0.1), Color(0.3, 0.0, 0.0), 0.5)
 	add_child(door_mesh)
@@ -450,6 +462,7 @@ func _place_exit_door() -> void:
 	sign_box.size = Vector3(1.2, 0.3, 0.05)
 	exit_sign.mesh = sign_box
 	exit_sign.position = Vector3(base_x, wh * 0.9 + 0.3, base_z)
+	exit_sign.rotation.y = PI / 2.0  # Rotate 90 degrees
 	exit_sign.material_override = MaterialFactory.create_emissive_material(
 		Color(0.0, 0.8, 0.0), Color(0.0, 1.0, 0.0), 2.0)
 	add_child(exit_sign)
