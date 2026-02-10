@@ -133,6 +133,157 @@ func build_coffee_machines(rectangles: Array) -> void:
 
 
 # ---------------------------------------------------------------------------
+# Whiteboards (wall-mounted, detected from dark-green map pixels)
+# ---------------------------------------------------------------------------
+
+## Detect which side has a wall and orient the whiteboard flush against it.
+## Returns an Array of Node3D whiteboard nodes.
+func build_whiteboards(rectangles: Array, grid_data: Array, grid_rows: int, grid_cols: int, y_offset: float = 0.0) -> Array:
+	var s := GameConfig.SCALE
+	var wb_t := GameConfig.WHITEBOARD_THICKNESS
+	var wh := GameConfig.WALL_HEIGHT
+	var boards: Array = []
+
+	for rect: Array in rectangles:
+		var col: int = rect[0]; var row: int = rect[1]
+		var w: int = rect[2]; var h: int = rect[3]
+		var cx: float = (col + w / 2.0) * s
+		var cz: float = (row + h / 2.0) * s
+
+		# Detect adjacent wall direction (check 1 pixel outside each side)
+		var wall_north := false
+		var wall_south := false
+		var wall_west := false
+		var wall_east := false
+		var center_col: int = col + w / 2
+		var center_row: int = row + h / 2
+
+		if row - 1 >= 0 and grid_data[row - 1][center_col] == 1:
+			wall_north = true
+		if row + h < grid_rows and grid_data[row + h][center_col] == 1:
+			wall_south = true
+		if col - 1 >= 0 and grid_data[center_row][col - 1] == 1:
+			wall_west = true
+		if col + w < grid_cols and grid_data[center_row][col + w] == 1:
+			wall_east = true
+
+		# Position the whiteboard flush against the adjacent wall edge
+		var rot_y: float = 0.0
+		var pos_x: float = cx
+		var pos_z: float = cz
+		if wall_north:
+			rot_y = 0.0
+			pos_z = row * s + wb_t / 2.0        # north edge, facing south
+		elif wall_south:
+			rot_y = PI
+			pos_z = (row + h) * s - wb_t / 2.0  # south edge, facing north
+		elif wall_west:
+			rot_y = PI / 2.0
+			pos_x = col * s + wb_t / 2.0         # west edge, facing east
+		elif wall_east:
+			rot_y = -PI / 2.0
+			pos_x = (col + w) * s - wb_t / 2.0   # east edge, facing west
+		else:
+			if w <= h:
+				rot_y = PI / 2.0
+				pos_x = col * s + wb_t / 2.0
+			else:
+				rot_y = 0.0
+				pos_z = row * s + wb_t / 2.0
+
+		var wb_node := Node3D.new()
+		wb_node.position = Vector3(pos_x, 0, pos_z)
+		wb_node.rotation.y = rot_y
+		wb_node.set_meta("is_whiteboard", true)
+		wb_node.set_meta("wb_y", y_offset + wh / 2.0)
+
+		# Compute board width from the dark-green line length on the map
+		var actual_wb_w: float
+		if wall_north or wall_south or (not wall_west and not wall_east and w > h):
+			actual_wb_w = w * s   # line runs along X axis
+		else:
+			actual_wb_w = h * s   # line runs along Z axis
+		var wb_h: float = minf(actual_wb_w * GameConfig.WHITEBOARD_HEIGHT_RATIO, GameConfig.WHITEBOARD_MAX_HEIGHT)
+		# Center the whiteboard vertically on the wall
+		var wb_y: float = y_offset + wh / 2.0
+
+		# White board surface (floating on wall, not touching floor or ceiling)
+		var board_mesh := MeshInstance3D.new()
+		var board_box := BoxMesh.new()
+		board_box.size = Vector3(actual_wb_w, wb_h, wb_t)
+		board_mesh.mesh = board_box
+		board_mesh.position = Vector3(0, wb_y, 0)
+		var board_mat := StandardMaterial3D.new()
+		board_mat.albedo_color = Color(0.95, 0.95, 0.95)
+		board_mat.roughness = 0.3
+		board_mesh.material_override = board_mat
+		wb_node.add_child(board_mesh)
+
+		# Black border lines around the whiteboard (4 bars)
+		var border_mat := StandardMaterial3D.new()
+		border_mat.albedo_color = Color(0.05, 0.05, 0.05)
+		var bar_w: float = 0.04  # border thickness
+
+		# Top bar
+		var top_bar := MeshInstance3D.new()
+		var top_box := BoxMesh.new()
+		top_box.size = Vector3(actual_wb_w + bar_w * 2, bar_w, wb_t + 0.01)
+		top_bar.mesh = top_box
+		top_bar.position = Vector3(0, wb_y + wb_h / 2.0 + bar_w / 2.0, 0)
+		top_bar.material_override = border_mat
+		wb_node.add_child(top_bar)
+
+		# Bottom bar
+		var bot_bar := MeshInstance3D.new()
+		var bot_box := BoxMesh.new()
+		bot_box.size = Vector3(actual_wb_w + bar_w * 2, bar_w, wb_t + 0.01)
+		bot_bar.mesh = bot_box
+		bot_bar.position = Vector3(0, wb_y - wb_h / 2.0 - bar_w / 2.0, 0)
+		bot_bar.material_override = border_mat
+		wb_node.add_child(bot_bar)
+
+		# Left bar
+		var left_bar := MeshInstance3D.new()
+		var left_box := BoxMesh.new()
+		left_box.size = Vector3(bar_w, wb_h + bar_w * 2, wb_t + 0.01)
+		left_bar.mesh = left_box
+		left_bar.position = Vector3(-actual_wb_w / 2.0 - bar_w / 2.0, wb_y, 0)
+		left_bar.material_override = border_mat
+		wb_node.add_child(left_bar)
+
+		# Right bar
+		var right_bar := MeshInstance3D.new()
+		var right_box := BoxMesh.new()
+		right_box.size = Vector3(bar_w, wb_h + bar_w * 2, wb_t + 0.01)
+		right_bar.mesh = right_box
+		right_bar.position = Vector3(actual_wb_w / 2.0 + bar_w / 2.0, wb_y, 0)
+		right_bar.material_override = border_mat
+		wb_node.add_child(right_bar)
+
+		# Small tray at the bottom of the whiteboard
+		var tray_mesh := MeshInstance3D.new()
+		var tray_box := BoxMesh.new()
+		tray_box.size = Vector3(actual_wb_w * 0.8, 0.04, 0.08)
+		tray_mesh.mesh = tray_box
+		tray_mesh.position = Vector3(0, wb_y - wb_h / 2.0 - 0.02, wb_t / 2.0 + 0.03)
+		tray_mesh.material_override = border_mat
+		wb_node.add_child(tray_mesh)
+
+		add_child(wb_node)
+		boards.append(wb_node)
+		print("Whiteboard at grid=(", col, ",", row, ") wall=",
+			"N" if wall_north else "", "S" if wall_south else "",
+			"W" if wall_west else "", "E" if wall_east else "")
+
+	return boards
+
+
+## Build whiteboards at a specific Y offset (for floor 2).
+func build_whiteboards_at_height(rectangles: Array, grid_data: Array, grid_rows: int, grid_cols: int, y_offset: float) -> Array:
+	return build_whiteboards(rectangles, grid_data, grid_rows, grid_cols, y_offset)
+
+
+# ---------------------------------------------------------------------------
 # Ceiling with holes (terraces, staircases, floor-2 areas)
 # ---------------------------------------------------------------------------
 
@@ -199,10 +350,10 @@ func build_ceiling_with_holes(rows: int, cols: int, terrace_grid: Array, stairca
 # Floor 2
 # ---------------------------------------------------------------------------
 
-func build_floor_2() -> Array:
+func build_floor_2() -> Dictionary:
 	var f2_data := MapParser.parse_floor2_image(GameConfig.MAP_PATH_F2)
 	if f2_data.is_empty():
-		return []
+		return {}
 
 	var f2_grid: Array = f2_data["grid"]
 	var f2_red_grid: Array = f2_data["red_grid"]
@@ -306,9 +457,13 @@ func build_floor_2() -> Array:
 		var door := _create_door(block, f2_grid, f2_rows, f2_cols, sound, f2h)
 		f2_doors.append(door)
 
+	# Whiteboards (floor 2)
+	var f2_wb_rects: Array = MapParser.merge_type(f2_grid, f2_rows, f2_cols, 8)
+	var f2_wb_nodes: Array = build_whiteboards_at_height(f2_wb_rects, f2_grid, f2_rows, f2_cols, f2h)
+
 	print("Floor 2: Walls=", f2_walls.size(), " Doors=", f2_door_blocks.size(),
 		" Windows=", f2_windows.size(), " Floor=", sol_rects.size())
-	return f2_doors
+	return {"doors": f2_doors, "whiteboards": f2_wb_nodes}
 
 
 # ---------------------------------------------------------------------------

@@ -75,6 +75,12 @@ const ENEMY_FIND_GROWL_SOUND_PATH := "res://songs/monster-growl-find-me.wav"
 const ENEMY_GROWL_INTERVAL_MIN := 8.0      # Min seconds between random growls
 const ENEMY_GROWL_INTERVAL_MAX := 20.0     # Max seconds between random growls
 
+# --- Whiteboard ---
+const WHITEBOARD_HEIGHT_RATIO := 1.5       # Height = width × this ratio
+const WHITEBOARD_MAX_HEIGHT := 4.0        # Cap height so it never fills the wall
+const WHITEBOARD_THICKNESS := 0.06
+const WHITEBOARD_INTERACT_DISTANCE := 3.0
+
 # --- Enemy 2 (Funny Fear) ---
 const ENEMY2_MODEL_PATH := "res://characters/funny_fear_p2_rig.glb"
 const ENEMY2_MODEL_SCALE := Vector3(1, 1, 1)  # Adjust if needed

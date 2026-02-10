@@ -7,7 +7,6 @@ var found_digits: Array = [-1, -1, -1, -1]
 var current_quest: String = "find_exit"
 
 # --- Decoy indices (randomized in setup) ---
-var uv_real_index: int = 0
 var pc_real_index: int = 0
 var strobe_real_index: int = 0
 var disc_real_index: int = 0
@@ -17,8 +16,7 @@ var uv_parts_collected: int = 0
 var uv_parts: Array = []
 var has_uv_lamp := false
 var uv_mode := false
-var uv_tableaux: Array = []          # Array of Node3D (4 tableaux)
-var uv_chiffre_meshes: Array = []    # Array of MeshInstance3D (4 digit meshes)
+var uv_chiffre_mesh: MeshInstance3D = null  # The UV-hidden digit on the chosen whiteboard
 
 # --- Quiz ---
 var pc_nodes: Array = []             # Array of Node3D (3 PCs)
@@ -65,6 +63,11 @@ var spinning_disc_positions: Array = []  # Array of Vector3
 var disc_chiffre_meshes: Array = []  # Array of MeshInstance3D
 var disc_rotation_speed: float = 720.0
 
+# --- Whiteboards (map-placed) ---
+var whiteboard_nodes: Array = []     # Array of Node3D (all whiteboards from map)
+var whiteboard_code_index: int = -1  # Index of the one showing the exit code
+var whiteboard_code_read := false    # True once player has read the code board
+
 # --- Exit ---
 var exit_code: Array = [0, 0, 0, 0]
 var code_panel_open: bool = false
@@ -80,14 +83,12 @@ var spawn_position := Vector3.ZERO
 var game_ui: GameUI
 
 # --- Horror messages for decoys ---
-var fake_uv_messages: Array = []
 var fake_pc_messages: Array = []
 var fake_strobe_messages: Array = []
 var fake_disc_messages: Array = []
 
 # --- Room position offsets ---
 const UV_PART_START := 1       # positions 1-4
-const TABLEAU_START := 5       # positions 5-8
 const PC_START := 9            # positions 9-11
 const STROBE_START := 12       # positions 12-14
 const DISC_START := 15         # positions 15-18
@@ -106,19 +107,80 @@ func setup(positions: Array, spawn_pos: Vector3, ui: GameUI) -> void:
 	_generate_exit_code()
 
 	# Randomize decoy indices
-	uv_real_index = randi() % 4
 	pc_real_index = randi() % 3
 	strobe_real_index = randi() % 3
 	disc_real_index = randi() % 4
 
 	_place_exit_door()
 	_place_uv_parts()
-	_place_uv_tableaux()
 	_place_pcs()
 	_place_strobes_and_discs()
 
+	# DEBUG: start with UV lamp ready
+	has_uv_lamp = true
+	uv_parts_collected = GameConfig.UV_PARTS_NEEDED
+
 	print("Exit code: ", exit_code)
-	print("Decoy indices - UV:", uv_real_index, " PC:", pc_real_index, " Strobe:", strobe_real_index, " Disc:", disc_real_index)
+	print("Decoy indices - PC:", pc_real_index, " Strobe:", strobe_real_index, " Disc:", disc_real_index)
+
+
+## Setup whiteboards from map-placed nodes. One random board has a UV-hidden digit (exit_code[0]).
+func setup_whiteboards(boards: Array) -> void:
+	whiteboard_nodes = boards
+	if boards.is_empty():
+		return
+
+	# Choose one random whiteboard to hold the UV digit
+	whiteboard_code_index = randi() % boards.size()
+
+	for i: int in range(boards.size()):
+		var wb: Node3D = boards[i]
+		var is_code_board: bool = (i == whiteboard_code_index)
+		wb.set_meta("is_code_board", is_code_board)
+		wb.set_meta("wb_index", i)
+
+		if is_code_board:
+			# Add UV-hidden code text on this whiteboard (invisible until UV lamp)
+			var wb_center_y: float = wb.get_meta("wb_y", GameConfig.WALL_HEIGHT / 2.0)
+			var code_text: String = str(exit_code[0]) + " " + str(exit_code[1]) + " " + str(exit_code[2]) + " " + str(exit_code[3])
+			var chiffre_mesh := MeshInstance3D.new()
+			var tm := TextMesh.new()
+			tm.text = code_text
+			tm.font_size = 120
+			tm.depth = 0.002
+			chiffre_mesh.mesh = tm
+			chiffre_mesh.position = Vector3(0, wb_center_y, GameConfig.WHITEBOARD_THICKNESS / 2.0 + 0.005)
+			var chiffre_mat := StandardMaterial3D.new()
+			chiffre_mat.albedo_color = Color(0.0, 0.0, 0.0, 0.0)  # fully transparent
+			chiffre_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			chiffre_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			chiffre_mat.no_depth_test = true
+			chiffre_mesh.material_override = chiffre_mat
+			wb.add_child(chiffre_mesh)
+			uv_chiffre_mesh = chiffre_mesh
+
+			# DEBUG: tall light beam visible through walls
+			var beam := MeshInstance3D.new()
+			var beam_cyl := CylinderMesh.new()
+			beam_cyl.top_radius = 0.05
+			beam_cyl.bottom_radius = 0.05
+			beam_cyl.height = 50.0
+			beam.mesh = beam_cyl
+			beam.position = Vector3(0, 25.0, 0)
+			var beam_mat := StandardMaterial3D.new()
+			beam_mat.albedo_color = Color(0.0, 1.0, 0.0, 0.6)
+			beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			beam_mat.emission_enabled = true
+			beam_mat.emission = Color(0.0, 1.0, 0.0)
+			beam_mat.emission_energy_multiplier = 5.0
+			beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			beam_mat.no_depth_test = true
+			beam.material_override = beam_mat
+			wb.add_child(beam)
+
+			print("UV WHITEBOARD (digit hidden) at: ", wb.global_position)
+
+	print("Whiteboards: ", boards.size(), " | UV board index: ", whiteboard_code_index)
 
 
 func _get_room_pos(index: int) -> Vector3:
@@ -149,14 +211,6 @@ func _generate_lure_messages() -> void:
 	var frag_c: int = (d4 - frag_a - frag_b) % 10
 	if frag_c < 0:
 		frag_c += 10
-
-	# UV lures: embed frag_a as last digit of a year
-	var year: int = 2010 + frag_a
-	fake_uv_messages = [
-		"Thomas... promo " + str(year) + "... il dit qu'il est dans les murs...",
-		"La bete est furieuse. Tu n'aurais pas du utiliser cette lumiere.",
-		"Les murs se souviennent. Ce n'est pas le bon tableau.",
-	]
 
 	# PC lures: embed frag_b as last digit of a day count
 	var days: int = 800 + frag_b
@@ -229,7 +283,7 @@ func _place_exit_door() -> void:
 
 
 # ---------------------------------------------------------------------------
-# UV Parts & Tableaux (4 tableaux: 1 real + 3 decoys)
+# UV Parts (collect 4 parts to build UV lamp)
 # ---------------------------------------------------------------------------
 
 func _place_uv_parts() -> void:
@@ -263,99 +317,28 @@ func _place_uv_parts() -> void:
 		print("UV piece [", part_names[i], "]: ", pos)
 
 
-func _place_uv_tableaux() -> void:
-	for i: int in range(4):
-		var pos: Vector3 = _get_room_pos(TABLEAU_START + i)
-		var is_real: bool = (i == uv_real_index)
-
-		var tableau := Node3D.new()
-		tableau.position = pos
-		tableau.set_meta("is_real", is_real)
-		tableau.set_meta("tableau_index", i)
-
-		# White board
-		var board := MeshInstance3D.new()
-		var box := BoxMesh.new()
-		box.size = Vector3(2.0, 1.2, 0.05)
-		board.mesh = box
-		board.position = Vector3(0, 2.0, 0)
-		var board_mat := StandardMaterial3D.new()
-		board_mat.albedo_color = Color(0.9, 0.9, 0.9)
-		board.material_override = board_mat
-		tableau.add_child(board)
-
-		# Hidden digit (invisible, revealed by UV)
-		var chiffre_mesh := MeshInstance3D.new()
-		var chiffre_box := BoxMesh.new()
-		chiffre_box.size = Vector3(0.8, 0.8, 0.06)
-		chiffre_mesh.mesh = chiffre_box
-		chiffre_mesh.position = Vector3(0, 2.0, 0.02)
-		chiffre_mesh.set_meta("is_real", is_real)
-		chiffre_mesh.set_meta("fake_index", i if not is_real else -1)
-
-		var chiffre_mat := StandardMaterial3D.new()
-		chiffre_mat.albedo_color = Color(0.9, 0.9, 0.9, 0.0)
-		chiffre_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		chiffre_mat.emission_enabled = true
-		chiffre_mat.emission = Color(0.3, 0.0, 1.0) if is_real else Color(0.8, 0.0, 0.0)
-		chiffre_mat.emission_energy_multiplier = 0.0
-		chiffre_mesh.material_override = chiffre_mat
-		tableau.add_child(chiffre_mesh)
-
-		# "TABLEAU" label beneath
-		var label_mesh := MeshInstance3D.new()
-		var label_box := BoxMesh.new()
-		label_box.size = Vector3(1.0, 0.15, 0.03)
-		label_mesh.mesh = label_box
-		label_mesh.position = Vector3(0, 1.3, 0)
-		var label_mat := StandardMaterial3D.new()
-		label_mat.albedo_color = Color(0.3, 0.2, 0.1)
-		label_mesh.material_override = label_mat
-		tableau.add_child(label_mesh)
-
-		add_child(tableau)
-		uv_tableaux.append(tableau)
-		uv_chiffre_meshes.append(chiffre_mesh)
-		print("UV Tableau ", i, " (real=", is_real, "): ", pos)
-
-
-## Call each frame to reveal / hide the UV digit on all tableaux based on player distance & UV mode.
+## Call each frame to reveal / hide the UV digit on the chosen whiteboard.
 func update_uv_tableau(player_pos: Vector3) -> void:
-	for i: int in range(uv_chiffre_meshes.size()):
-		var chiffre_mesh: MeshInstance3D = uv_chiffre_meshes[i]
-		if not chiffre_mesh or not is_instance_valid(chiffre_mesh):
-			continue
-		var tableau: Node3D = uv_tableaux[i]
-		var dist: float = player_pos.distance_to(tableau.global_position)
-		var mat: StandardMaterial3D = chiffre_mesh.material_override
-		var is_real: bool = chiffre_mesh.get_meta("is_real", false)
+	if not uv_chiffre_mesh or not is_instance_valid(uv_chiffre_mesh):
+		return
+	if whiteboard_code_index < 0 or whiteboard_code_index >= whiteboard_nodes.size():
+		return
+	var wb: Node3D = whiteboard_nodes[whiteboard_code_index]
+	# Use XZ distance so wall height doesn't affect range check
+	var wb_pos: Vector3 = wb.global_position
+	var dist_xz: float = Vector2(player_pos.x - wb_pos.x, player_pos.z - wb_pos.z).length()
+	var mat: StandardMaterial3D = uv_chiffre_mesh.material_override
 
-		if uv_mode and has_uv_lamp and dist < 6.0:
-			var reveal: float = clampf(1.0 - (dist - 2.0) / 4.0, 0.0, 1.0)
-			if is_real:
-				mat.albedo_color = Color(0.3, 0.0, 1.0, reveal * 0.9)
-			else:
-				mat.albedo_color = Color(0.8, 0.0, 0.0, reveal * 0.9)
-			mat.emission_energy_multiplier = reveal * 4.0
-
-			if reveal > 0.5:
-				if is_real and found_digits[0] == -1:
-					found_digits[0] = exit_code[0]
-					_show_message("Chiffre 1 trouvé : " + str(exit_code[0]))
-					_update_quest()
-				elif not is_real:
-					var fake_idx: int = chiffre_mesh.get_meta("fake_index", 0)
-					# Show fake message only once per approach (use meta to track)
-					if not chiffre_mesh.has_meta("message_shown"):
-						chiffre_mesh.set_meta("message_shown", true)
-						var msg_idx: int = fake_idx % fake_uv_messages.size()
-						_show_message(fake_uv_messages[msg_idx])
-		else:
-			mat.albedo_color = Color(0.9, 0.9, 0.9, 0.0)
-			mat.emission_energy_multiplier = 0.0
-			# Reset message shown when player walks away
-			if chiffre_mesh.has_meta("message_shown"):
-				chiffre_mesh.remove_meta("message_shown")
+	if uv_mode and has_uv_lamp and dist_xz < 6.0:
+		var reveal: float = clampf(1.0 - (dist_xz - 2.0) / 4.0, 0.0, 1.0)
+		# Dark blue/purple ink appearing on whiteboard
+		mat.albedo_color = Color(0.1, 0.05, 0.4, reveal * 0.95)
+		if reveal > 0.5 and found_digits[0] == -1:
+			found_digits[0] = exit_code[0]
+			_show_message("Code trouvé sur le tableau : " + str(exit_code[0]) + " " + str(exit_code[1]) + " " + str(exit_code[2]) + " " + str(exit_code[3]))
+			_update_quest()
+	else:
+		mat.albedo_color = Color(0.0, 0.0, 0.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -648,6 +631,15 @@ func check_interactions(player_pos: Vector3) -> String:
 				else:
 					return "Il faut un stroboscope pour lire ce disque"
 
+	# Whiteboards
+	for wb: Node3D in whiteboard_nodes:
+		if player_pos.distance_to(wb.global_position) < GameConfig.WHITEBOARD_INTERACT_DISTANCE:
+			var is_code: bool = wb.get_meta("is_code_board", false)
+			if is_code:
+				return "[E] Lire le tableau (code)"
+			else:
+				return "Un tableau blanc... rien d'utile."
+
 	# Exit door
 	var exit_dist: float = player_pos.distance_to(exit_door_pos)
 	if exit_dist < GameConfig.INTERACT_DISTANCE:
@@ -710,6 +702,32 @@ func handle_interact(player_pos: Vector3, door_callback: Callable) -> void:
 				var idx: int = strobe.get_meta("strobe_index", 0)
 				var msg_idx: int = idx % fake_strobe_messages.size()
 				_show_message(fake_strobe_messages[msg_idx])
+			return
+
+	# Whiteboards
+	for wb: Node3D in whiteboard_nodes:
+		if player_pos.distance_to(wb.global_position) < GameConfig.WHITEBOARD_INTERACT_DISTANCE:
+			var is_code: bool = wb.get_meta("is_code_board", false)
+			if is_code and not whiteboard_code_read:
+				whiteboard_code_read = true
+				_show_message("Le code est : " + str(exit_code[0]) + str(exit_code[1]) + str(exit_code[2]) + str(exit_code[3]) + " !")
+			elif is_code:
+				_show_message("Code : " + str(exit_code[0]) + str(exit_code[1]) + str(exit_code[2]) + str(exit_code[3]))
+			else:
+				_show_message("Rien d'interessant sur ce tableau...")
+			return
+
+	# Whiteboards
+	for wb: Node3D in whiteboard_nodes:
+		if player_pos.distance_to(wb.global_position) < GameConfig.WHITEBOARD_INTERACT_DISTANCE:
+			var is_code: bool = wb.get_meta("is_code_board", false)
+			if is_code and not whiteboard_code_read:
+				whiteboard_code_read = true
+				_show_message("Le code est : " + str(exit_code[0]) + str(exit_code[1]) + str(exit_code[2]) + str(exit_code[3]) + " !")
+			elif is_code:
+				_show_message("Code : " + str(exit_code[0]) + str(exit_code[1]) + str(exit_code[2]) + str(exit_code[3]))
+			else:
+				_show_message("Rien d'interessant sur ce tableau...")
 			return
 
 	# Exit door
@@ -783,23 +801,15 @@ func _reset_puzzles() -> void:
 	_generate_exit_code()
 
 	# Re-randomize decoy indices so player can't just memorize
-	uv_real_index = randi() % 4
 	pc_real_index = randi() % 3
 	strobe_real_index = randi() % 3
 	disc_real_index = randi() % 4
 
-	# Update tableau real/fake status
-	for i: int in range(uv_chiffre_meshes.size()):
-		var is_real: bool = (i == uv_real_index)
-		var chiffre_mesh: MeshInstance3D = uv_chiffre_meshes[i]
-		if chiffre_mesh and is_instance_valid(chiffre_mesh):
-			chiffre_mesh.set_meta("is_real", is_real)
-			chiffre_mesh.set_meta("fake_index", i if not is_real else -1)
-			var mat: StandardMaterial3D = chiffre_mesh.material_override
-			mat.emission = Color(0.3, 0.0, 1.0) if is_real else Color(0.8, 0.0, 0.0)
-		var tableau: Node3D = uv_tableaux[i]
-		if tableau and is_instance_valid(tableau):
-			tableau.set_meta("is_real", is_real)
+	# Reset UV whiteboard digit visibility
+	if uv_chiffre_mesh and is_instance_valid(uv_chiffre_mesh):
+		var mat: StandardMaterial3D = uv_chiffre_mesh.material_override
+		mat.albedo_color = Color(0.9, 0.9, 0.9, 0.0)
+		mat.emission_energy_multiplier = 0.0
 
 	# Update PC real/fake status
 	for i: int in range(pc_nodes.size()):
@@ -823,7 +833,7 @@ func _reset_puzzles() -> void:
 			var is_real: bool = (i == strobe_real_index)
 			strobe.set_meta("is_real", is_real)
 
-	print("RESET! New decoy indices - UV:", uv_real_index, " PC:", pc_real_index, " Strobe:", strobe_real_index, " Disc:", disc_real_index)
+	print("RESET! New decoy indices - PC:", pc_real_index, " Strobe:", strobe_real_index, " Disc:", disc_real_index)
 
 
 # ---------------------------------------------------------------------------
