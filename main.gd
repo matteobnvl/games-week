@@ -116,6 +116,7 @@ func _ready() -> void:
 	add_child(puzzle_manager)
 	puzzle_manager.setup(room_positions, spawn_position, game_ui)
 	puzzle_manager.setup_whiteboards(whiteboard_nodes)
+	puzzle_manager.setup_uv_wall_texts(wall_rects)
 
 	print("Ready! Walls: ", wall_rects.size(), " | Doors: ", doors.size(), " | Rooms: ", room_positions.size())
 
