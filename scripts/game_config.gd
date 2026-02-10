@@ -15,9 +15,9 @@ const JUMP_VELOCITY := 4.5
 const MOUSE_SENSITIVITY := 0.002
 
 # --- Stamina ---
-const STAMINA_MAX := 100.0
-const STAMINA_DRAIN := 25.0
-const STAMINA_REGEN := 15.0
+const STAMINA_MAX := 150.0
+const STAMINA_DRAIN := 15.0
+const STAMINA_REGEN := 25.0
 const STAMINA_MIN_TO_SPRINT := 10.0
 
 # --- Flashlight ---
