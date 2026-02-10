@@ -105,6 +105,10 @@ var direction_signs: Array = []   # Arrow sign nodes pointing to objectives
 var _elements_preloaded := false
 var _elements_visible := false
 
+# --- Blood decals ---
+var blood_textures: Array = []         # Array of ImageTexture (21 processed textures)
+var blood_decals_uv: Array = []        # Array of {node: Sprite3D, parent: Node3D} for UV-only blood
+
 # --- Horror messages for decoys ---
 var fake_pc_messages: Array = []
 var fake_strobe_messages: Array = []
@@ -353,6 +357,166 @@ func setup_uv_wall_texts(wall_rects: Array) -> void:
 	print("UV scary wall texts placed: ", num_texts)
 
 
+# ---------------------------------------------------------------------------
+# Blood decals
+# ---------------------------------------------------------------------------
+
+func _load_blood_textures() -> void:
+	for i: int in range(1, 22):
+		var path: String = "res://image/img (" + str(i) + ").png"
+		var img := Image.new()
+		var err: int = img.load(path)
+		if err != OK:
+			continue
+		# Convert white background to transparent
+		for y: int in range(img.get_height()):
+			for x: int in range(img.get_width()):
+				var px: Color = img.get_pixel(x, y)
+				var brightness: float = (px.r + px.g + px.b) / 3.0
+				if brightness > 0.85:
+					var alpha: float = clampf(1.0 - (brightness - 0.85) / 0.15, 0.0, 1.0)
+					img.set_pixel(x, y, Color(px.r, px.g, px.b, alpha))
+		var tex := ImageTexture.create_from_image(img)
+		blood_textures.append(tex)
+	print("Blood textures loaded: ", blood_textures.size())
+
+
+func _place_blood_decals() -> void:
+	if blood_textures.is_empty():
+		return
+
+	var s: float = GameConfig.SCALE
+	var wh: float = GameConfig.WALL_HEIGHT
+	var placed: int = 0
+
+	# --- Pick 4 "heavy blood" zones from room positions ---
+	var heavy_zones: Array = []
+	var available_rooms: Array = room_positions.duplicate()
+	available_rooms.shuffle()
+	for z: int in range(mini(4, available_rooms.size())):
+		heavy_zones.append(available_rooms[z])
+
+	# --- Find wall_rects near each heavy zone ---
+	var heavy_wall_indices: Array = []  # indices already used
+	for zone_pos: Vector3 in heavy_zones:
+		var zone_gx: float = zone_pos.x / s
+		var zone_gz: float = zone_pos.z / s
+		var nearby_indices: Array = []
+		for wi: int in range(wall_rects.size()):
+			var rect: Array = wall_rects[wi]
+			var wcx: float = rect[0] + rect[2] / 2.0
+			var wcz: float = rect[1] + rect[3] / 2.0
+			var dist: float = Vector2(wcx - zone_gx, wcz - zone_gz).length()
+			if dist < 60.0 and wi not in heavy_wall_indices:
+				nearby_indices.append(wi)
+		nearby_indices.shuffle()
+
+		# Place 5-8 splatters on walls near this zone
+		var wall_count: int = mini(randi_range(5, 8), nearby_indices.size())
+		for j: int in range(wall_count):
+			var wi: int = nearby_indices[j]
+			heavy_wall_indices.append(wi)
+			_place_blood_on_wall(wall_rects[wi], s, wh, true)
+			placed += 1
+			if placed % 5 == 0:
+				await get_tree().process_frame
+
+		# Place 2-3 floor splatters in the zone
+		for f: int in range(randi_range(2, 3)):
+			_place_blood_on_floor(zone_pos)
+			placed += 1
+			if placed % 5 == 0:
+				await get_tree().process_frame
+
+	# --- Sparse blood on random walls elsewhere ---
+	var sparse_indices: Array = range(wall_rects.size())
+	sparse_indices.shuffle()
+	var sparse_count: int = 0
+	for wi: int in sparse_indices:
+		if sparse_count >= 15:
+			break
+		if wi in heavy_wall_indices:
+			continue
+		_place_blood_on_wall(wall_rects[wi], s, wh, false)
+		sparse_count += 1
+		placed += 1
+		if placed % 5 == 0:
+			await get_tree().process_frame
+
+	print("Blood decals placed: ", placed, " (UV-only: ", blood_decals_uv.size(), ")")
+
+
+func _place_blood_on_wall(rect: Array, s: float, wh: float, is_heavy: bool) -> void:
+	var col: int = rect[0]; var row: int = rect[1]
+	var w: int = rect[2]; var h: int = rect[3]
+	var cx: float = (col + w / 2.0) * s
+	var cz: float = (row + h / 2.0) * s
+
+	var anchor := Node3D.new()
+	anchor.position = Vector3(cx, 0, cz)
+
+	var sprite := Sprite3D.new()
+	sprite.texture = blood_textures[randi() % blood_textures.size()]
+	sprite.transparent = true
+	sprite.shaded = false
+	sprite.no_depth_test = false
+	sprite.double_sided = false
+	sprite.pixel_size = randf_range(0.001, 0.0025)
+	sprite.position.y = randf_range(0.3, wh - 0.5)
+	sprite.rotation.z = randf_range(-0.3, 0.3)
+
+	# Orient based on wall shape + small z-offset to avoid z-fighting
+	var offset_z: float = 0.06
+	if w > h:
+		sprite.position.z = offset_z
+		if randi() % 2 == 0:
+			anchor.rotation.y = PI
+	else:
+		sprite.position.z = offset_z
+		anchor.rotation.y = PI / 2.0
+		if randi() % 2 == 0:
+			anchor.rotation.y = -PI / 2.0
+
+	# 20% visible, 80% UV-only (heavy zones: 30% visible)
+	var visible_chance: float = 0.3 if is_heavy else 0.2
+	if randf() < visible_chance:
+		sprite.modulate = Color(0.4, 0.15, 0.15, 0.7)
+	else:
+		sprite.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		blood_decals_uv.append({"node": sprite, "parent": anchor})
+
+	anchor.add_child(sprite)
+	add_child(anchor)
+
+
+func _place_blood_on_floor(zone_pos: Vector3) -> void:
+	var anchor := Node3D.new()
+	var offset_x: float = randf_range(-3.0, 3.0)
+	var offset_z: float = randf_range(-3.0, 3.0)
+	anchor.position = Vector3(zone_pos.x + offset_x, 0, zone_pos.z + offset_z)
+
+	var sprite := Sprite3D.new()
+	sprite.texture = blood_textures[randi() % blood_textures.size()]
+	sprite.transparent = true
+	sprite.shaded = false
+	sprite.no_depth_test = false
+	sprite.double_sided = false
+	sprite.pixel_size = randf_range(0.002, 0.004)
+	sprite.rotation.x = -PI / 2.0  # Lay flat on floor
+	sprite.position.y = 0.02
+	sprite.rotation.z = randf_range(0, TAU)  # Random spin
+
+	# 20% visible, 80% UV-only
+	if randf() < 0.2:
+		sprite.modulate = Color(0.4, 0.15, 0.15, 0.6)
+	else:
+		sprite.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		blood_decals_uv.append({"node": sprite, "parent": anchor})
+
+	anchor.add_child(sprite)
+	add_child(anchor)
+
+
 func _get_room_pos(index: int) -> Vector3:
 	if index < room_positions.size():
 		return room_positions[index]
@@ -535,6 +699,22 @@ func update_uv_tableau(player_pos: Vector3) -> void:
 			_set_uv_color_recursive(scary_node, blood_color)
 		else:
 			_set_uv_color_recursive(scary_node, Color(0.0, 0.0, 0.0, 0.0))
+
+	# --- Blood splatters (UV only) ---
+	for entry: Dictionary in blood_decals_uv:
+		var blood_node: Sprite3D = entry["node"]
+		var parent: Node3D = entry["parent"]
+		if not blood_node or not is_instance_valid(blood_node):
+			continue
+		if not parent or not is_instance_valid(parent):
+			continue
+		var blood_pos: Vector3 = parent.global_position
+		var d_xz: float = Vector2(player_pos.x - blood_pos.x, player_pos.z - blood_pos.z).length()
+		if uv_mode and has_uv_lamp and d_xz < 5.0:
+			var r: float = clampf(1.0 - (d_xz - 1.5) / 3.5, 0.0, 1.0)
+			blood_node.modulate = Color(0.5, 0.2, 0.2, r * 0.85)
+		else:
+			blood_node.modulate = Color(1.0, 1.0, 1.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -1070,6 +1250,12 @@ func _reset_puzzles() -> void:
 			var is_real: bool = (i == strobe_real_index)
 			strobe.set_meta("is_real", is_real)
 
+	# Reset blood UV decals
+	for entry: Dictionary in blood_decals_uv:
+		var blood_node: Sprite3D = entry["node"]
+		if blood_node and is_instance_valid(blood_node):
+			blood_node.modulate = Color(1.0, 1.0, 1.0, 0.0)
+
 	print("RESET! New decoy indices - PC:", pc_real_index, " Strobe:", strobe_real_index, " Disc:", disc_real_index)
 
 
@@ -1133,6 +1319,10 @@ func _preload_elements() -> void:
 	await setup_whiteboards(boards)
 	await get_tree().process_frame
 	await setup_uv_wall_texts(wall_rects)
+	await get_tree().process_frame
+	_load_blood_textures()
+	await get_tree().process_frame
+	await _place_blood_decals()
 	await get_tree().process_frame
 	_place_direction_signs()
 

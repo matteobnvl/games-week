@@ -732,7 +732,7 @@ func show_game_over() -> void:
 	add_child(overlay)
 
 	var death_label := Label.new()
-	death_label.text = "FELIPE T'A ATTRAPE..."
+	death_label.text = "LE MONSTRE T'A ATTRAPE..."
 	death_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	death_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	death_label.set_anchors_preset(Control.PRESET_CENTER)
