@@ -290,7 +290,7 @@ func _update_ui() -> void:
 		if nearest and not nearest.is_animating:
 			game_ui.show_interact("[E] Fermer" if nearest.is_open else "[E] Ouvrir")
 
-	game_ui.update_quest(puzzle_manager.current_quest, puzzle_manager.found_digits)
+	game_ui.update_quest(puzzle_manager.current_quest, puzzle_manager.found_digits, puzzle_manager.uv_parts_collected)
 
 
 # ---------------------------------------------------------------------------

@@ -691,11 +691,11 @@ func update_uv_tableau(player_pos: Vector3) -> void:
 		var p_pos: Vector3 = parent.global_position
 		var d_xz: float = Vector2(player_pos.x - p_pos.x, player_pos.z - p_pos.z).length()
 
-		if uv_mode and has_uv_lamp and d_xz < 5.0:
-			var r: float = clampf(1.0 - (d_xz - 1.5) / 3.5, 0.0, 1.0)
-			# Blood red - vary slightly per text for organic feel
-			var red_val: float = randf_range(0.5, 0.8)
-			var blood_color := Color(red_val, 0.02, 0.02, r * 0.92)
+		if uv_mode and has_uv_lamp and d_xz < 12.0:
+			var r: float = clampf(1.0 - (d_xz - 2.0) / 10.0, 0.0, 1.0)
+			# Blood red - more vibrant and visible
+			var red_val: float = randf_range(0.7, 1.0)
+			var blood_color := Color(red_val, 0.01, 0.01, r * 0.98)
 			_set_uv_color_recursive(scary_node, blood_color)
 		else:
 			_set_uv_color_recursive(scary_node, Color(0.0, 0.0, 0.0, 0.0))
@@ -1006,10 +1006,14 @@ func update_spinning_disc(delta: float, player_pos: Vector3) -> void:
 
 func _update_quest() -> void:
 	var digits_found: int = get_digits_found_count()
+	
+	# Progression: collect_uv -> find_code -> enter_code
 	if digits_found >= 4 and not game_won:
 		current_quest = "enter_code"
-	elif exit_door_found:
-		current_quest = "find_clues"
+	elif has_uv_lamp and exit_door_found and current_quest != "find_code" and current_quest != "enter_code":
+		current_quest = "find_code"
+	elif exit_door_found and current_quest == "find_exit":
+		current_quest = "collect_uv"
 
 
 func get_digits_found_count() -> int:
@@ -1099,6 +1103,7 @@ func handle_interact(player_pos: Vector3, door_callback: Callable) -> void:
 			if uv_parts_collected >= GameConfig.UV_PARTS_NEEDED:
 				has_uv_lamp = true
 				_show_message("Lampe UV craftee ! [G] pour activer")
+				_update_quest()
 			return
 
 	# PCs (find nearest)
@@ -1160,7 +1165,7 @@ func _check_exit_interaction(player_pos: Vector3) -> bool:
 	if dist < GameConfig.INTERACT_DISTANCE:
 		if not exit_door_found:
 			exit_door_found = true
-			current_quest = "find_clues"
+			current_quest = "collect_uv"
 			if _elements_preloaded:
 				_reveal_elements()
 			_show_message("La porte est verrouillee... Il faut un code a 4 chiffres ! Additionnez les signes...")
