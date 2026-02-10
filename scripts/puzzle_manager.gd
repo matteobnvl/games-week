@@ -631,6 +631,17 @@ func _place_exit_door(exit_map_positions: Array = []) -> void:
 		Color(0.5, 0.1, 0.1), Color(0.3, 0.0, 0.0), 0.5)
 	add_child(door_mesh)
 
+	# Door collision
+	var door_collision := StaticBody3D.new()
+	door_collision.position = Vector3(base_x, wh * 0.45, base_z)
+	door_collision.rotation.y = PI / 2.0
+	var collision_shape := CollisionShape3D.new()
+	var collision_box := BoxShape3D.new()
+	collision_box.size = Vector3(1.5, wh * 0.9, 0.15)
+	collision_shape.shape = collision_box
+	door_collision.add_child(collision_shape)
+	add_child(door_collision)
+
 	# Exit sign
 	var exit_sign := MeshInstance3D.new()
 	var sign_box := BoxMesh.new()

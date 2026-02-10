@@ -141,8 +141,13 @@ func _create_labels() -> void:
 
 	# Quest panel (prominent objective tracker)
 	quest_panel = PanelContainer.new()
-	quest_panel.position = Vector2(20, 20)
-	quest_panel.custom_minimum_size = Vector2(500, 0)
+	quest_panel.anchor_left = 0.5
+	quest_panel.anchor_top = 0.0
+	quest_panel.anchor_right = 0.5
+	quest_panel.anchor_bottom = 0.0
+	quest_panel.offset_left = -400
+	quest_panel.offset_top = 20
+	quest_panel.custom_minimum_size = Vector2(800, 0)
 
 	var quest_style := StyleBoxFlat.new()
 	quest_style.bg_color = Color(0.02, 0.02, 0.06, 0.95)
@@ -397,7 +402,7 @@ func update_quest(current_quest: String, found_digits: Array, uv_collected: int 
 	match current_quest:
 		"find_exit":
 			quest_main_label.text = "Trouver la sortie"
-			quest_detail_label.text = "Une porte... Explorez le batiment !"
+			quest_detail_label.text = "Une porte avec une lumière verte... Explorez le batiment et trouver la sortie !"
 		"collect_uv":
 			quest_main_label.text = "Lampe UV"
 			quest_detail_label.text = "Recuperez 4 elements violets pour construire une lampe UV\n\n" + str(uv_collected) + " / " + str(GameConfig.UV_PARTS_NEEDED) + " pieces collectees"
