@@ -92,6 +92,8 @@ var win_overlay: ColorRect = null
 var room_positions: Array = []
 var spawn_position := Vector3.ZERO
 var game_ui: GameUI
+var boards: Array = []
+var wall_rects: Array = []
 
 # --- Horror messages for decoys ---
 var fake_pc_messages: Array = []
@@ -109,10 +111,12 @@ const DISC_START := 15         # positions 15-18
 # Setup
 # ---------------------------------------------------------------------------
 
-func setup(positions: Array, spawn_pos: Vector3, ui: GameUI) -> void:
+func setup(positions: Array, spawn_pos: Vector3, ui: GameUI, boards: Array, wall_rects: Array) -> void:
 	room_positions = positions
 	spawn_position = spawn_pos
 	game_ui = ui
+	boards = boards
+	wall_rects = wall_rects
 
 	# Generate random exit code + lure messages
 	_generate_exit_code()
@@ -121,11 +125,11 @@ func setup(positions: Array, spawn_pos: Vector3, ui: GameUI) -> void:
 	pc_real_index = randi() % 3
 	strobe_real_index = randi() % 3
 	disc_real_index = randi() % 4
-
+	
 	_place_exit_door()
-	_place_uv_parts()
-	_place_pcs()
-	_place_strobes_and_discs()
+	
+	# disable strobes
+	#_place_strobes_and_discs()
 
 	# DEBUG: start with UV lamp ready
 	has_uv_lamp = true
@@ -414,13 +418,16 @@ func _place_exit_door() -> void:
 	exit_door_pos = best_pos
 
 	var wh := GameConfig.WALL_HEIGHT
+	# Force Y à 0 pour éviter le décalage d'étage
+	var base_x: float = exit_door_pos.x
+	var base_z: float = exit_door_pos.z
 
 	# Door mesh
 	var door_mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(1.5, wh * 0.9, 0.15)
 	door_mesh.mesh = box
-	door_mesh.position = Vector3(exit_door_pos.x, wh * 0.45, exit_door_pos.z)
+	door_mesh.position = Vector3(base_x, wh * 0.45, base_z)
 	door_mesh.material_override = MaterialFactory.create_emissive_material(
 		Color(0.5, 0.1, 0.1), Color(0.3, 0.0, 0.0), 0.5)
 	add_child(door_mesh)
@@ -430,7 +437,7 @@ func _place_exit_door() -> void:
 	var sign_box := BoxMesh.new()
 	sign_box.size = Vector3(1.2, 0.3, 0.05)
 	exit_sign.mesh = sign_box
-	exit_sign.position = Vector3(exit_door_pos.x, wh * 0.9 + 0.3, exit_door_pos.z)
+	exit_sign.position = Vector3(base_x, wh * 0.9 + 0.3, base_z)
 	exit_sign.material_override = MaterialFactory.create_emissive_material(
 		Color(0.0, 0.8, 0.0), Color(0.0, 1.0, 0.0), 2.0)
 	add_child(exit_sign)
@@ -440,11 +447,10 @@ func _place_exit_door() -> void:
 	exit_light.light_color = Color(0.0, 1.0, 0.2)
 	exit_light.light_energy = 2.0
 	exit_light.omni_range = 8.0
-	exit_light.position = Vector3(exit_door_pos.x, wh * 0.9, exit_door_pos.z)
+	exit_light.position = Vector3(base_x, wh * 0.9, base_z)
 	add_child(exit_light)
 
 	print("Exit door: ", exit_door_pos)
-
 
 # ---------------------------------------------------------------------------
 # UV Parts (collect 4 parts to build UV lamp)
@@ -925,6 +931,7 @@ func _check_exit_interaction(player_pos: Vector3) -> bool:
 		if not exit_door_found:
 			exit_door_found = true
 			current_quest = "find_clues"
+			_setup_all_elements()
 			_show_message("La porte est verrouillee... Il faut un code a 4 chiffres ! Additionnez les signes...")
 			_update_quest()
 			return true
@@ -1067,3 +1074,11 @@ func _trigger_win() -> void:
 	tween.parallel().tween_property(win_label, "modulate:a", 1.0, 2.0)
 	tween.tween_interval(3.0)
 	tween.tween_callback(func() -> void: get_tree().change_scene_to_file("res://menu.tscn"))
+	
+	
+func _setup_all_elements() -> void:
+	_place_uv_parts()
+	_place_pcs()
+	setup_whiteboards(boards)
+	setup_uv_wall_texts(wall_rects)
+	
