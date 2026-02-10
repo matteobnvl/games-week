@@ -1,6 +1,6 @@
 class_name EnemyController
 extends CharacterBody3D
-## Horror enemy (Felipe the goose) – patrols corridors, attracted by player sound & flashlight.
+## Horror enemy (monster the goose) – patrols corridors, attracted by player sound & flashlight.
 ##
 ## Detection rules:
 ##   - Flashlight ON → attracts enemy from large radius

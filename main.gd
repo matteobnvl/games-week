@@ -355,7 +355,7 @@ func _on_player_caught() -> void:
 	if ambient_music and ambient_music.playing:
 		ambient_music.stop()
 	game_ui.show_game_over()
-	print("GAME OVER - Felipe caught you!")
+	print("GAME OVER - Monster caught you!")
 
 
 func _start_ambient_music() -> void:
