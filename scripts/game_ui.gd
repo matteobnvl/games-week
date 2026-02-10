@@ -7,7 +7,11 @@ var stamina_bar_bg: ColorRect
 var battery_bar_fg: ColorRect
 var battery_bar_bg: ColorRect
 var interact_label: Label
-var quest_label: Label
+var quest_panel: PanelContainer
+var quest_title_label: Label
+var quest_main_label: Label
+var quest_detail_label: Label
+var _last_quest: String = ""
 var code_label: Label
 var uv_parts_label: Label
 var message_label: Label
@@ -135,13 +139,51 @@ func _create_labels() -> void:
 	interact_label.visible = false
 	add_child(interact_label)
 
-	quest_label = Label.new()
-	quest_label.text = ">> Trouver la sortie"
-	quest_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	quest_label.position = Vector2(20, 20)
-	quest_label.add_theme_font_size_override("font_size", 22)
-	quest_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3, 0.9))
-	add_child(quest_label)
+	# Quest panel (prominent objective tracker)
+	quest_panel = PanelContainer.new()
+	quest_panel.position = Vector2(20, 20)
+	quest_panel.custom_minimum_size = Vector2(500, 0)
+
+	var quest_style := StyleBoxFlat.new()
+	quest_style.bg_color = Color(0.02, 0.02, 0.06, 0.95)
+	quest_style.border_color = Color(1.0, 0.75, 0.2, 0.8)
+	quest_style.border_width_left = 8
+	quest_style.border_width_top = 3
+	quest_style.border_width_right = 3
+	quest_style.border_width_bottom = 3
+	quest_style.set_corner_radius_all(6)
+	quest_style.content_margin_left = 16
+	quest_style.content_margin_right = 16
+	quest_style.content_margin_top = 12
+	quest_style.content_margin_bottom = 12
+	quest_panel.add_theme_stylebox_override("panel", quest_style)
+
+	var quest_vbox := VBoxContainer.new()
+	quest_vbox.add_theme_constant_override("separation", 6)
+
+	quest_title_label = Label.new()
+	quest_title_label.text = "◆ OBJECTIF"
+	quest_title_label.add_theme_font_size_override("font_size", 14)
+	quest_title_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.2, 0.9))
+	quest_vbox.add_child(quest_title_label)
+
+	quest_main_label = Label.new()
+	quest_main_label.text = "Trouver la sortie"
+	quest_main_label.add_theme_font_size_override("font_size", 26)
+	quest_main_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.3, 1.0))
+	quest_main_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	quest_vbox.add_child(quest_main_label)
+
+	quest_detail_label = Label.new()
+	quest_detail_label.text = "Explorez le batiment"
+	quest_detail_label.add_theme_font_size_override("font_size", 17)
+	quest_detail_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.9, 0.85))
+	quest_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	quest_detail_label.custom_minimum_size = Vector2(450, 0)
+	quest_vbox.add_child(quest_detail_label)
+
+	quest_panel.add_child(quest_vbox)
+	add_child(quest_panel)
 
 	code_label = Label.new()
 	code_label.visible = false
@@ -150,7 +192,7 @@ func _create_labels() -> void:
 	uv_parts_label = Label.new()
 	uv_parts_label.text = ""
 	uv_parts_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	uv_parts_label.position = Vector2(20, 50)
+	uv_parts_label.position = Vector2(20, 140)
 	uv_parts_label.add_theme_font_size_override("font_size", 16)
 	uv_parts_label.add_theme_color_override("font_color", Color(0.6, 0.4, 1.0, 0.8))
 	add_child(uv_parts_label)
@@ -340,9 +382,7 @@ func update_battery_bar(current_battery: float, recharging: bool) -> void:
 
 
 func update_uv_label(uv_collected: int, has_uv_lamp: bool, uv_mode: bool, has_strobe: bool, strobe_active: bool) -> void:
-	if uv_collected > 0 and not has_uv_lamp:
-		uv_parts_label.text = "Pieces UV : " + str(uv_collected) + "/" + str(GameConfig.UV_PARTS_NEEDED)
-	elif has_uv_lamp:
+	if has_uv_lamp:
 		uv_parts_label.text = "Lampe UV : ON [G]" if uv_mode else "Lampe UV : OFF [G]"
 	else:
 		uv_parts_label.text = ""
@@ -350,14 +390,50 @@ func update_uv_label(uv_collected: int, has_uv_lamp: bool, uv_mode: bool, has_st
 		uv_parts_label.text += "  |  Strobo : ON [H]" if strobe_active else "  |  Strobo : OFF [H]"
 
 
-func update_quest(current_quest: String, _found_digits: Array) -> void:
+func update_quest(current_quest: String, found_digits: Array, uv_collected: int = 0) -> void:
+	var quest_changed: bool = (current_quest != _last_quest)
+	_last_quest = current_quest
+
 	match current_quest:
 		"find_exit":
-			quest_label.text = ">> Trouver la sortie"
-		"find_clues":
-			quest_label.text = ">> Explorer et trouver le code"
+			quest_main_label.text = "Trouver la sortie"
+			quest_detail_label.text = "Une porte... Explorez le batiment !"
+		"collect_uv":
+			quest_main_label.text = "Lampe UV"
+			quest_detail_label.text = "Recuperez 4 elements violets pour construire une lampe UV\n\n" + str(uv_collected) + " / " + str(GameConfig.UV_PARTS_NEEDED) + " pieces collectees"
+		"find_code":
+			quest_main_label.text = "Trouver le code"
+			var lines: PackedStringArray = []
+			lines.append("Utilisez la lampe UV pour reveler les indices :")
+			if found_digits[0] != -1:
+				lines.append("  [✓] Code sur tableau (UV)")
+			else:
+				lines.append("  [ ] Code sur tableau (illumine par UV)")
+			if found_digits[2] != -1:
+				lines.append("  [✓] Code du PC")
+			else:
+				lines.append("  [ ] Code du PC (inscrit sur un mur)")
+			quest_detail_label.text = "\n".join(lines)
 		"enter_code":
-			quest_label.text = ">> Retourner a la porte de sortie !"
+			quest_main_label.text = "Dernier obstacle !"
+			quest_detail_label.text = "La porte est pres... Entrez le code a 4 chiffres\n\nRetournez a la porte pour vous echapper !"
+
+	quest_detail_label.visible = quest_detail_label.text != ""
+
+	if quest_changed:
+		_flash_quest_panel()
+
+
+func _flash_quest_panel() -> void:
+	if not quest_panel:
+		return
+	# Dramatic flash with scale animation
+	quest_panel.scale = Vector2(0.95, 0.95)
+	quest_panel.modulate = Color(2.0, 1.8, 0.6, 1.0)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(quest_panel, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.6)
+	tween.tween_property(quest_panel, "scale", Vector2(1.0, 1.0), 0.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
 
 
 func update_message_timer(delta: float) -> void:
