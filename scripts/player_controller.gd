@@ -164,7 +164,7 @@ func _update_stamina(delta: float, is_moving: bool) -> void:
 
 func update_flashlight(delta: float, uv_mode: bool, has_uv_lamp: bool, strobe_active: bool, has_strobe: bool, strobe_is_real: bool = true) -> void:
 	var was_recharging := is_recharging
-  if Input.is_key_pressed(KEY_R):
+	if Input.is_key_pressed(KEY_R):
 		is_recharging = true
 		flashlight.visible = false
 		battery += GameConfig.BATTERY_RECHARGE_SPEED * delta
