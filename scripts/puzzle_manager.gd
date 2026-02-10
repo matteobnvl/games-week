@@ -217,27 +217,6 @@ func setup_whiteboards(boards: Array) -> void:
 			wb.add_child(scary_node)
 			uv_scary_texts.append({"node": scary_node, "parent": wb})
 
-			# DEBUG: tall light beam visible through walls
-			var beam := MeshInstance3D.new()
-			var beam_cyl := CylinderMesh.new()
-			beam_cyl.top_radius = 0.05
-			beam_cyl.bottom_radius = 0.05
-			beam_cyl.height = 50.0
-			beam.mesh = beam_cyl
-			beam.position = Vector3(0, 25.0, 0)
-			var beam_mat := StandardMaterial3D.new()
-			beam_mat.albedo_color = Color(0.0, 1.0, 0.0, 0.6)
-			beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			beam_mat.emission_enabled = true
-			beam_mat.emission = Color(0.0, 1.0, 0.0)
-			beam_mat.emission_energy_multiplier = 5.0
-			beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			beam_mat.no_depth_test = true
-			beam.material_override = beam_mat
-			wb.add_child(beam)
-
-			print("UV WHITEBOARD (digit hidden) at: ", wb.global_position)
-
 	print("Whiteboards: ", boards.size(), " | UV board index: ", whiteboard_code_index)
 
 
@@ -970,19 +949,6 @@ func handle_interact(player_pos: Vector3, door_callback: Callable) -> void:
 				var idx: int = strobe.get_meta("strobe_index", 0)
 				var msg_idx: int = idx % fake_strobe_messages.size()
 				_show_message(fake_strobe_messages[msg_idx])
-			return
-
-	# Whiteboards
-	for wb: Node3D in whiteboard_nodes:
-		if player_pos.distance_to(wb.global_position) < GameConfig.WHITEBOARD_INTERACT_DISTANCE:
-			var is_code: bool = wb.get_meta("is_code_board", false)
-			if is_code and not whiteboard_code_read:
-				whiteboard_code_read = true
-				_show_message("Le code est : " + str(exit_code[0]) + str(exit_code[1]) + str(exit_code[2]) + str(exit_code[3]) + " !")
-			elif is_code:
-				_show_message("Code : " + str(exit_code[0]) + str(exit_code[1]) + str(exit_code[2]) + str(exit_code[3]))
-			else:
-				_show_message("Rien d'interessant sur ce tableau...")
 			return
 
 	# Whiteboards
