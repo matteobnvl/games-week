@@ -417,7 +417,7 @@ func update_quest(current_quest: String, found_digits: Array, uv_collected: int 
 			if found_digits[2] != -1:
 				lines.append("  [✓] Code du PC")
 			else:
-				lines.append("  [ ] Code du PC (inscrit sur un mur)")
+				lines.append("  [ ] Code du PC (inscrit sur un tableau)")
 			quest_detail_label.text = "\n".join(lines)
 		"enter_code":
 			quest_main_label.text = "Dernier obstacle !"
