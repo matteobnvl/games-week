@@ -39,7 +39,7 @@ const LINES: Array[String] = [
 	"",
 	"",
 	"",
-	"On raconte que Felipe rôde dans les couloirs la nuit.",
+	"On raconte qu'un monstre rôde dans les couloirs la nuit.",
 	"",
 	"Personne ne sait pourquoi il est là.",
 	"Personne ne veut le savoir.",
