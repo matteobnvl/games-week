@@ -113,13 +113,7 @@ func _create_labels() -> void:
 	add_child(quest_label)
 
 	code_label = Label.new()
-	code_label.text = "Code : _ _ _ _"
-	code_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	code_label.anchor_left = 1.0
-	code_label.anchor_right = 1.0
-	code_label.position = Vector2(-220, 20)
-	code_label.add_theme_font_size_override("font_size", 22)
-	code_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0, 0.9))
+	code_label.visible = false
 	add_child(code_label)
 
 	uv_parts_label = Label.new()
@@ -325,7 +319,7 @@ func update_uv_label(uv_collected: int, has_uv_lamp: bool, uv_mode: bool, has_st
 		uv_parts_label.text += "  |  Strobo : ON [H]" if strobe_active else "  |  Strobo : OFF [H]"
 
 
-func update_quest(current_quest: String, found_digits: Array) -> void:
+func update_quest(current_quest: String, _found_digits: Array) -> void:
 	match current_quest:
 		"find_exit":
 			quest_label.text = ">> Trouver la sortie"
@@ -333,15 +327,6 @@ func update_quest(current_quest: String, found_digits: Array) -> void:
 			quest_label.text = ">> Explorer et trouver le code"
 		"enter_code":
 			quest_label.text = ">> Retourner a la porte de sortie !"
-	var code_text: String = "Code : "
-	for i: int in range(4):
-		if found_digits[i] != -1:
-			code_text += str(found_digits[i]) + " "
-		elif i == 3:
-			code_text += "? "
-		else:
-			code_text += "_ "
-	code_label.text = code_text
 
 
 func update_message_timer(delta: float) -> void:
@@ -458,22 +443,17 @@ func _create_code_panel() -> void:
 	add_child(code_panel)
 
 
-func open_code_panel(found_digits: Array) -> void:
+func open_code_panel(_found_digits: Array) -> void:
 	code_entry_active = true
 	code_panel.visible = true
 	code_active_slot = -1
 
+	# All slots are empty and editable (no pre-fill)
 	for i: int in range(4):
-		if found_digits[i] != -1:
-			code_digit_values[i] = found_digits[i]
-			code_digit_labels[i].text = str(found_digits[i])
-			code_digit_labels[i].add_theme_color_override("font_color", Color(0.3, 0.9, 0.3))
-			code_locked_slots[i] = true
-		else:
-			code_digit_values[i] = -1
-			code_digit_labels[i].text = "_"
-			code_digit_labels[i].add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
-			code_locked_slots[i] = false
+		code_digit_values[i] = -1
+		code_digit_labels[i].text = "_"
+		code_digit_labels[i].add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+		code_locked_slots[i] = false
 
 	_select_next_empty_slot()
 

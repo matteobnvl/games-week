@@ -99,6 +99,7 @@ var game_ui: GameUI
 var boards: Array = []
 var wall_rects: Array = []
 var pc_map_positions: Array = []  # Positions from map (navy blue pixels)
+var direction_signs: Array = []   # Arrow sign nodes pointing to objectives
 
 # --- Horror messages for decoys ---
 var fake_pc_messages: Array = []
@@ -149,9 +150,9 @@ func setup(positions: Array, spawn_pos: Vector3, ui: GameUI, boards: Array, wall
 	# disable strobes
 	#_place_strobes_and_discs()
 
-	# DEBUG: start with UV lamp ready
-	has_uv_lamp = true
-	uv_parts_collected = GameConfig.UV_PARTS_NEEDED
+	# UV lamp starts empty, player must collect all parts
+	has_uv_lamp = false
+	uv_parts_collected = 0
 
 	print("Exit code: ", exit_code)
 	print("Decoy indices - PC:", pc_real_index, " Strobe:", strobe_real_index, " Disc:", disc_real_index)
@@ -173,9 +174,9 @@ func setup_whiteboards(boards: Array) -> void:
 		wb.set_meta("wb_index", i)
 
 		if is_code_board:
-			# Add UV-hidden code text on this whiteboard (invisible until UV lamp)
+			# Add UV-hidden code text on this whiteboard (first 2 digits only)
 			var wb_center_y: float = wb.get_meta("wb_y", GameConfig.WALL_HEIGHT / 2.0)
-			var code_text: String = str(exit_code[0]) + " " + str(exit_code[1]) + " " + str(exit_code[2]) + " " + str(exit_code[3])
+			var code_text: String = str(exit_code[0]) + " " + str(exit_code[1]) + " _ _"
 			var chiffre_mesh := MeshInstance3D.new()
 			var tm := TextMesh.new()
 			tm.text = code_text
@@ -527,7 +528,8 @@ func update_uv_tableau(player_pos: Vector3) -> void:
 				mat.albedo_color = Color(0.1, 0.05, 0.4, reveal * 0.95)
 				if reveal > 0.5 and found_digits[0] == -1:
 					found_digits[0] = exit_code[0]
-					_show_message("Code trouvé sur le tableau : " + str(exit_code[0]) + " " + str(exit_code[1]) + " " + str(exit_code[2]) + " " + str(exit_code[3]))
+					found_digits[1] = exit_code[1]
+					_show_message("Code partiel : " + str(exit_code[0]) + " " + str(exit_code[1]) + " _ _")
 					_update_quest()
 			else:
 				mat.albedo_color = Color(0.0, 0.0, 0.0, 0.0)
@@ -626,8 +628,9 @@ func _show_quiz_question() -> void:
 		if quiz_correct_count >= quiz_questions.size():
 			# All answers correct
 			if active_pc_is_real:
-				game_ui.quiz_question_label.text = "Correct ! Le chiffre est : " + str(exit_code[1])
-				found_digits[1] = exit_code[1]
+				game_ui.quiz_question_label.text = "Correct ! Code : _ _ " + str(exit_code[2]) + " " + str(exit_code[3])
+				found_digits[2] = exit_code[2]
+				found_digits[3] = exit_code[3]
 				pc_done = true
 				_update_quest()
 			else:
@@ -841,7 +844,7 @@ func update_spinning_disc(delta: float, player_pos: Vector3) -> void:
 
 func _update_quest() -> void:
 	var digits_found: int = get_digits_found_count()
-	if digits_found >= 3 and not game_won:
+	if digits_found >= 4 and not game_won:
 		current_quest = "enter_code"
 	elif exit_door_found:
 		current_quest = "find_clues"
@@ -1159,4 +1162,88 @@ func _setup_all_elements() -> void:
 	_place_pcs()
 	setup_whiteboards(boards)
 	setup_uv_wall_texts(wall_rects)
+	_place_direction_signs()
+
+
+## Place arrow signs at random corridor positions pointing toward the whiteboard and PC.
+func _place_direction_signs() -> void:
+	var targets: Array = []  # {pos: Vector3, label: String}
+
+	# Target: the correct PC
+	if pc_real_index >= 0 and pc_real_index < pc_map_positions.size():
+		targets.append({"pos": pc_map_positions[pc_real_index], "label": "PC"})
+
+	# Target: the code whiteboard
+	if whiteboard_code_index >= 0 and whiteboard_code_index < whiteboard_nodes.size():
+		var wb: Node3D = whiteboard_nodes[whiteboard_code_index]
+		targets.append({"pos": wb.global_position, "label": "CODE"})
+
+	if targets.is_empty():
+		return
+
+	# Pick room positions to place signs (not too close, not too far from targets)
+	var available: Array = room_positions.duplicate()
+	available.shuffle()
+	var s: float = GameConfig.SCALE
+	var wh: float = GameConfig.WALL_HEIGHT
+
+	for target: Dictionary in targets:
+		var target_pos: Vector3 = target["pos"]
+		var label_text: String = target["label"]
+		var signs_placed: int = 0
+
+		for rp: Vector3 in available:
+			if signs_placed >= 3:
+				break
+			var dist: float = Vector2(rp.x - target_pos.x, rp.z - target_pos.z).length()
+			# Place signs between 8m and 40m from target
+			if dist < 8.0 * s or dist > 40.0 * s:
+				continue
+			# Don't place too close to exit door or spawn
+			if Vector2(rp.x - exit_door_pos.x, rp.z - exit_door_pos.z).length() < 5.0 * s:
+				continue
+			if Vector2(rp.x - spawn_position.x, rp.z - spawn_position.z).length() < 5.0 * s:
+				continue
+
+			_create_arrow_sign(rp, target_pos, label_text, wh)
+			signs_placed += 1
+
+	print("Direction signs placed: ", direction_signs.size())
+
+
+func _create_arrow_sign(sign_pos: Vector3, target_pos: Vector3, label_text: String, wall_height: float) -> void:
+	var anchor := Node3D.new()
+	anchor.position = Vector3(sign_pos.x, 0, sign_pos.z)
+
+	# Compute direction toward target
+	var dir := Vector2(target_pos.x - sign_pos.x, target_pos.z - sign_pos.z).normalized()
+	var angle: float = atan2(dir.x, dir.y)
+	anchor.rotation.y = angle
+
+	# Arrow text: "CODE >>>" or "PC >>>"
+	var arrow_text: String = label_text + " >>>"
+	var text_mesh := MeshInstance3D.new()
+	var tm := TextMesh.new()
+	tm.text = arrow_text
+	tm.font_size = 60
+	tm.depth = 0.005
+	if font_scary:
+		tm.font = font_scary
+	text_mesh.mesh = tm
+	text_mesh.position = Vector3(0, wall_height * 0.6, 0)
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.8, 0.1, 0.1, 0.85)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.no_depth_test = true
+	text_mesh.material_override = mat
+
+	# Slight random tilt for hand-scrawled look
+	text_mesh.rotation.z = randf_range(-0.08, 0.08)
+	text_mesh.scale = Vector3(randf_range(0.9, 1.1), randf_range(0.9, 1.1), 1.0)
+
+	anchor.add_child(text_mesh)
+	add_child(anchor)
+	direction_signs.append(anchor)
 	
