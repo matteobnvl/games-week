@@ -1023,10 +1023,9 @@ func update_spinning_disc(delta: float, player_pos: Vector3) -> void:
 			var dist: float = player_pos.distance_to(disc_pos)
 			if dist < 4.0:
 				var is_real: bool = disc.get_meta("is_real", false)
-				if is_real and found_digits[2] == -1:
-					found_digits[2] = exit_code[2]
-					_show_message("Chiffre 3 trouvé : " + str(exit_code[2]))
-					_update_quest()
+				if is_real and not disc.get_meta("message_shown", false):
+					disc.set_meta("message_shown", true)
+					_show_message("Le disque tourne... mais il ne montre que du vide.")
 				elif not is_real and not disc.get_meta("message_shown", false):
 					disc.set_meta("message_shown", true)
 					var msg_idx: int = disc.get_meta("disc_index", 0) % fake_disc_messages.size()
