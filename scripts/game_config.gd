@@ -45,4 +45,3 @@ const FLOOR_2_HEIGHT := 6.0
 # --- Puzzle ---
 const UV_PARTS_NEEDED := 4
 const INTERACT_DISTANCE := 2.5
-const EXIT_CODE := [7, 3, 5, 0]

@@ -127,8 +127,8 @@ func _physics_process(delta: float) -> void:
 	if not player:
 		return
 
-	# Freeze player during quiz or win
-	player.movement_enabled = not puzzle_manager.quiz_active and not puzzle_manager.game_won
+	# Freeze player during quiz, code entry, or win
+	player.movement_enabled = not puzzle_manager.quiz_active and not puzzle_manager.game_won and not puzzle_manager.code_panel_open
 	player.update_movement(delta)
 	player.update_flashlight(
 		delta,
@@ -147,6 +147,17 @@ func _physics_process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not player:
+		return
+
+	# While code entry panel is open
+	if puzzle_manager.code_panel_open:
+		if event is InputEventKey and event.pressed:
+			if event.keycode == KEY_ESCAPE:
+				puzzle_manager._on_code_cancelled()
+			elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+				puzzle_manager._on_code_confirmed()
+			else:
+				game_ui.handle_code_key_input(event.keycode)
 		return
 
 	# While quiz is open, only allow Escape to close it

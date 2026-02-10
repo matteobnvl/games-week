@@ -66,6 +66,9 @@ var disc_chiffre_meshes: Array = []  # Array of MeshInstance3D
 var disc_rotation_speed: float = 720.0
 
 # --- Exit ---
+var exit_code: Array = [0, 0, 0, 0]
+var code_panel_open: bool = false
+
 var exit_door_pos := Vector3.ZERO
 var exit_door_found := false
 var game_won := false
@@ -77,27 +80,10 @@ var spawn_position := Vector3.ZERO
 var game_ui: GameUI
 
 # --- Horror messages for decoys ---
-var fake_uv_messages: Array = [
-	"Thomas... promo 2019... il dit qu'il est dans les murs...",
-	"La bête est furieuse. Tu n'aurais pas dû utiliser cette lumière.",
-	"Les murs se souviennent. Ce n'est pas le bon tableau.",
-]
-
-var fake_pc_messages: Array = [
-	"[SYSTEME] Dernière connexion : Emma L. - il y a 847 jours... session toujours active.",
-	"[CONFIDENTIEL] rapport_incident_2021.pdf - Disparitions étage 2 - Accès refusé.",
-]
-
-var fake_strobe_messages: Array = [
-	"Ce stroboscope appartenait à Lucas M... Il ne fonctionne plus correctement.",
-	"Pas celui-là... La lumière est trop faible.",
-]
-
-var fake_disc_messages: Array = [
-	"Le 4ème groupe a tenté de fuir par le toit... seules leurs chaussures ont été retrouvées.",
-	"Elle connaît le code. Elle attend que tu l'entres.",
-	"Ce disque ne montre rien d'utile... la bête a brouillé le message.",
-]
+var fake_uv_messages: Array = []
+var fake_pc_messages: Array = []
+var fake_strobe_messages: Array = []
+var fake_disc_messages: Array = []
 
 # --- Room position offsets ---
 const UV_PART_START := 1       # positions 1-4
@@ -116,6 +102,9 @@ func setup(positions: Array, spawn_pos: Vector3, ui: GameUI) -> void:
 	spawn_position = spawn_pos
 	game_ui = ui
 
+	# Generate random exit code + lure messages
+	_generate_exit_code()
+
 	# Randomize decoy indices
 	uv_real_index = randi() % 4
 	pc_real_index = randi() % 3
@@ -128,6 +117,7 @@ func setup(positions: Array, spawn_pos: Vector3, ui: GameUI) -> void:
 	_place_pcs()
 	_place_strobes_and_discs()
 
+	print("Exit code: ", exit_code)
 	print("Decoy indices - UV:", uv_real_index, " PC:", pc_real_index, " Strobe:", strobe_real_index, " Disc:", disc_real_index)
 
 
@@ -141,6 +131,54 @@ func _show_message(text: String) -> void:
 	if game_ui:
 		var duration: float = 3.0 + text.length() * 0.04
 		game_ui.show_message(text, duration)
+
+
+func _generate_exit_code() -> void:
+	exit_code[0] = randi_range(1, 9)
+	exit_code[1] = randi_range(1, 9)
+	exit_code[2] = randi_range(1, 9)
+	exit_code[3] = randi_range(0, 9)
+	_generate_lure_messages()
+
+
+func _generate_lure_messages() -> void:
+	var d4: int = exit_code[3]
+	# Split d4 into 3 fragments: (frag_a + frag_b + frag_c) % 10 == d4
+	var frag_a: int = randi_range(0, 9)
+	var frag_b: int = randi_range(0, 9)
+	var frag_c: int = (d4 - frag_a - frag_b) % 10
+	if frag_c < 0:
+		frag_c += 10
+
+	# UV lures: embed frag_a as last digit of a year
+	var year: int = 2010 + frag_a
+	fake_uv_messages = [
+		"Thomas... promo " + str(year) + "... il dit qu'il est dans les murs...",
+		"La bete est furieuse. Tu n'aurais pas du utiliser cette lumiere.",
+		"Les murs se souviennent. Ce n'est pas le bon tableau.",
+	]
+
+	# PC lures: embed frag_b as last digit of a day count
+	var days: int = 800 + frag_b
+	fake_pc_messages = [
+		"[SYSTEME] Derniere connexion : Emma L. - il y a " + str(days) + " jours... session toujours active.",
+		"[CONFIDENTIEL] rapport_incident_2021.pdf - Disparitions etage 2 - Acces refuse.",
+	]
+
+	# Strobe lures: hint to try another one
+	fake_strobe_messages = [
+		"Ce stroboscope appartenait a Lucas M... Il ne fonctionne plus. Cherchez-en un autre.",
+		"Pas celui-la... La lumiere est trop faible. Il en existe d'autres.",
+	]
+
+	# Disc lures: embed frag_c as a group number
+	fake_disc_messages = [
+		"Le " + str(frag_c) + "eme groupe a tente de fuir... seules leurs chaussures ont ete retrouvees.",
+		"Elle connait le code. Elle attend que tu l'entres.",
+		"Ce disque ne montre rien d'utile... la bete a brouille le message.",
+	]
+
+	print("Hint fragments: UV=", frag_a, " PC=", frag_b, " Disc=", frag_c, " -> sum%10=", (frag_a + frag_b + frag_c) % 10)
 
 
 # ---------------------------------------------------------------------------
@@ -302,8 +340,8 @@ func update_uv_tableau(player_pos: Vector3) -> void:
 
 			if reveal > 0.5:
 				if is_real and found_digits[0] == -1:
-					found_digits[0] = GameConfig.EXIT_CODE[0]
-					_show_message("Chiffre 1 trouvé : " + str(GameConfig.EXIT_CODE[0]))
+					found_digits[0] = exit_code[0]
+					_show_message("Chiffre 1 trouvé : " + str(exit_code[0]))
 					_update_quest()
 				elif not is_real:
 					var fake_idx: int = chiffre_mesh.get_meta("fake_index", 0)
@@ -388,8 +426,8 @@ func _show_quiz_question() -> void:
 		if quiz_correct_count >= quiz_questions.size():
 			# All answers correct
 			if active_pc_is_real:
-				game_ui.quiz_question_label.text = "Correct ! Le chiffre est : " + str(GameConfig.EXIT_CODE[1])
-				found_digits[1] = GameConfig.EXIT_CODE[1]
+				game_ui.quiz_question_label.text = "Correct ! Le chiffre est : " + str(exit_code[1])
+				found_digits[1] = exit_code[1]
 				pc_done = true
 				_update_quest()
 			else:
@@ -538,8 +576,8 @@ func update_spinning_disc(delta: float, player_pos: Vector3) -> void:
 			if dist < 4.0:
 				var is_real: bool = disc.get_meta("is_real", false)
 				if is_real and found_digits[2] == -1:
-					found_digits[2] = GameConfig.EXIT_CODE[2]
-					_show_message("Chiffre 3 trouvé : " + str(GameConfig.EXIT_CODE[2]))
+					found_digits[2] = exit_code[2]
+					_show_message("Chiffre 3 trouvé : " + str(exit_code[2]))
 					_update_quest()
 				elif not is_real and not disc.get_meta("message_shown", false):
 					disc.set_meta("message_shown", true)
@@ -596,16 +634,31 @@ func check_interactions(player_pos: Vector3) -> String:
 				else:
 					return "[E] Ramasser Stroboscope"
 
+	# Spinning discs (proximity hint, no E needed)
+	if found_digits[2] == -1:
+		for i: int in range(spinning_discs.size()):
+			var disc_pos: Vector3 = spinning_disc_positions[i]
+			if player_pos.distance_to(disc_pos) < 4.0:
+				if strobe_active and has_strobe and picked_strobe_is_real:
+					return "Le disque ralentit... approchez..."
+				elif strobe_active and has_strobe and not picked_strobe_is_real:
+					return "Le stroboscope ne fonctionne pas sur ce disque..."
+				elif has_strobe:
+					return "Activez le stroboscope [H] pres du disque"
+				else:
+					return "Il faut un stroboscope pour lire ce disque"
+
 	# Exit door
 	var exit_dist: float = player_pos.distance_to(exit_door_pos)
 	if exit_dist < GameConfig.INTERACT_DISTANCE:
-		var digits_found: int = get_digits_found_count()
-		if digits_found >= 3:
-			return "[E] Entrer le code !"
-		elif exit_door_found:
-			return "Porte verrouillée - Code : " + str(digits_found) + "/4"
-		else:
+		if not exit_door_found:
 			return "[E] Examiner la porte"
+		elif not game_won:
+			var digits_found: int = get_digits_found_count()
+			if digits_found >= 3:
+				return "[E] Entrer le code !"
+			else:
+				return "[E] Essayer le code (" + str(digits_found) + "/4 indices)"
 	return ""
 
 
@@ -673,33 +726,61 @@ func _check_exit_interaction(player_pos: Vector3) -> bool:
 		if not exit_door_found:
 			exit_door_found = true
 			current_quest = "find_clues"
-			_show_message("La porte est verrouillée... Il faut un code à 4 chiffres !")
+			_show_message("La porte est verrouillee... Il faut un code a 4 chiffres ! Additionnez les signes...")
 			_update_quest()
 			return true
 
-		if get_digits_found_count() >= 3 and not game_won:
-			# Strict code validation
-			var code_correct := true
-			for i: int in range(4):
-				if found_digits[i] != GameConfig.EXIT_CODE[i]:
-					code_correct = false
-					break
-
-			if code_correct:
-				game_won = true
-				_trigger_win()
-			else:
-				# Wrong code: horror message + full reset
-				_show_message("Ce n'est pas le bon code... Quelque chose gronde dans les murs.")
-				_reset_puzzles()
+		if not game_won and not code_panel_open:
+			code_panel_open = true
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			game_ui.open_code_panel(found_digits)
+			if not game_ui.code_confirm_btn.pressed.is_connected(_on_code_confirmed):
+				game_ui.code_confirm_btn.pressed.connect(_on_code_confirmed)
+			if not game_ui.code_cancel_btn.pressed.is_connected(_on_code_cancelled):
+				game_ui.code_cancel_btn.pressed.connect(_on_code_cancelled)
 		return true
 	return false
+
+
+func _on_code_confirmed() -> void:
+	var entered: Array = game_ui.get_entered_code()
+	# Check all 4 slots are filled
+	for d: int in entered:
+		if d == -1:
+			_show_message("Completez les 4 chiffres !")
+			return
+
+	game_ui.close_code_panel()
+	code_panel_open = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+	var correct := true
+	for i: int in range(4):
+		if entered[i] != exit_code[i]:
+			correct = false
+			break
+
+	if correct:
+		game_won = true
+		_trigger_win()
+	else:
+		_show_message("Ce n'est pas le bon code... Quelque chose gronde dans les murs.")
+		_reset_puzzles()
+
+
+func _on_code_cancelled() -> void:
+	game_ui.close_code_panel()
+	code_panel_open = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _reset_puzzles() -> void:
 	found_digits = [-1, -1, -1, -1]
 	pc_done = false
 	current_quest = "find_clues"
+
+	# Generate new random code + lure messages
+	_generate_exit_code()
 
 	# Re-randomize decoy indices so player can't just memorize
 	uv_real_index = randi() % 4
