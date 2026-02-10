@@ -79,6 +79,10 @@ var whiteboard_nodes: Array = []     # Array of Node3D (all whiteboards from map
 var whiteboard_code_index: int = -1  # Index of the one showing the exit code
 var whiteboard_code_read := false    # True once player has read the code board
 
+# --- PC Access ---
+const PC_ACCESS_CODE: Array = [1, 1, 1, 1]
+var pc_code_panel_open: bool = false
+
 # --- Exit ---
 var exit_code: Array = [0, 0, 0, 0]
 var code_panel_open: bool = false
@@ -94,6 +98,7 @@ var spawn_position := Vector3.ZERO
 var game_ui: GameUI
 var boards: Array = []
 var wall_rects: Array = []
+var pc_map_positions: Array = []  # Positions from map (navy blue pixels)
 
 # --- Horror messages for decoys ---
 var fake_pc_messages: Array = []
@@ -111,12 +116,19 @@ const DISC_START := 15         # positions 15-18
 # Setup
 # ---------------------------------------------------------------------------
 
-func setup(positions: Array, spawn_pos: Vector3, ui: GameUI, boards: Array, wall_rects: Array) -> void:
+func setup(positions: Array, spawn_pos: Vector3, ui: GameUI, boards: Array, wall_rects: Array, pc_rects: Array) -> void:
 	room_positions = positions
 	spawn_position = spawn_pos
 	game_ui = ui
-	boards = boards
-	wall_rects = wall_rects
+	self.boards = boards
+	self.wall_rects = wall_rects
+
+	# Convert PC rects (col, row, w, h) to world positions
+	var s: float = GameConfig.SCALE
+	for rect: Array in pc_rects:
+		var cx: float = (rect[0] + rect[2] / 2.0) * s
+		var cz: float = (rect[1] + rect[3] / 2.0) * s
+		pc_map_positions.append(Vector3(cx, 0.0, cz))
 
 	# Generate random exit code + lure messages
 	_generate_exit_code()
@@ -533,8 +545,13 @@ func update_uv_tableau(player_pos: Vector3) -> void:
 # ---------------------------------------------------------------------------
 
 func _place_pcs() -> void:
-	for i: int in range(3):
-		var pos: Vector3 = _get_room_pos(PC_START + i)
+	var count: int = pc_map_positions.size()
+	if count == 0:
+		print("WARNING: No PC positions found on map!")
+		return
+	pc_real_index = randi() % count
+	for i: int in range(count):
+		var pos: Vector3 = pc_map_positions[i]
 		var is_real: bool = (i == pc_real_index)
 
 		var pc := Node3D.new()
@@ -635,6 +652,51 @@ func _on_quiz_answer(index: int) -> void:
 func close_quiz() -> void:
 	quiz_active = false
 	game_ui.quiz_panel.visible = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+# ---------------------------------------------------------------------------
+# PC Code Entry
+# ---------------------------------------------------------------------------
+
+func _open_pc_code_panel() -> void:
+	if pc_code_panel_open:
+		return
+	pc_code_panel_open = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	game_ui.open_pc_code_panel()
+	if not game_ui.pc_code_confirm_btn.pressed.is_connected(_on_pc_code_confirmed):
+		game_ui.pc_code_confirm_btn.pressed.connect(_on_pc_code_confirmed)
+	if not game_ui.pc_code_cancel_btn.pressed.is_connected(_on_pc_code_cancelled):
+		game_ui.pc_code_cancel_btn.pressed.connect(_on_pc_code_cancelled)
+
+
+func _on_pc_code_confirmed() -> void:
+	var entered: Array = game_ui.get_entered_pc_code()
+	for d: int in entered:
+		if d == -1:
+			_show_message("Completez les 4 chiffres !")
+			return
+
+	var correct := true
+	for i: int in range(4):
+		if entered[i] != PC_ACCESS_CODE[i]:
+			correct = false
+			break
+
+	game_ui.close_pc_code_panel()
+	pc_code_panel_open = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+	if correct:
+		open_quiz(true)
+	else:
+		_show_message("Mauvais code !")
+
+
+func _on_pc_code_cancelled() -> void:
+	game_ui.close_pc_code_panel()
+	pc_code_panel_open = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -866,7 +928,10 @@ func handle_interact(player_pos: Vector3, door_callback: Callable) -> void:
 		for pc: Node3D in pc_nodes:
 			if player_pos.distance_to(pc.global_position) < GameConfig.INTERACT_DISTANCE:
 				var is_real: bool = pc.get_meta("is_real", false)
-				open_quiz(is_real)
+				if not is_real:
+					_show_message("PC hors tension... Essayez un autre.")
+				else:
+					_open_pc_code_panel()
 				return
 
 	# Stroboscopes (pick up or swap)

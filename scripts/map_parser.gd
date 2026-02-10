@@ -27,6 +27,10 @@ static func parse_image(path: String) -> Dictionary:
 				line.append(2)            # Red = door
 				red_line.append(true)
 				terrace_line.append(false)
+			elif px.r < 0.1 and px.g < 0.1 and px.b > 0.3 and px.b < 0.7:
+				line.append(9)            # Navy blue = PC
+				red_line.append(false)
+				terrace_line.append(false)
 			elif px.b > 0.8 and px.r < 0.3 and px.g < 0.3:
 				line.append(3)            # Blue = window
 				red_line.append(false)
@@ -100,6 +104,10 @@ static func parse_floor2_image(path: String) -> Dictionary:
 			elif px.r > 0.8 and px.g < 0.3 and px.b < 0.3:
 				line.append(2)            # Red = door
 				red_line.append(true)
+				void_line.append(false)
+			elif px.r < 0.1 and px.g < 0.1 and px.b > 0.3 and px.b < 0.7:
+				line.append(9)            # Navy blue = PC
+				red_line.append(false)
 				void_line.append(false)
 			elif px.b > 0.6 and px.r < 0.3 and px.g < 0.3:
 				line.append(3)            # Blue = window

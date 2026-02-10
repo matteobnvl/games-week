@@ -164,6 +164,7 @@ func _ready() -> void:
 
 ## Initialize with map data and patrol waypoints.
 func setup(grid: Array[Array], rows: int, cols: int, waypoints: Array, player: PlayerController, game_doors: Array = []) -> void:
+	return
 	grid_data = grid
 	grid_rows = rows
 	grid_cols = cols

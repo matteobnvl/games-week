@@ -47,6 +47,7 @@ func _ready() -> void:
 	var coffee_rects: Array = MapParser.merge_type(grid_data, grid_rows, grid_cols, 6)
 	staircase_rects = MapParser.merge_type(grid_data, grid_rows, grid_cols, 7)
 	var whiteboard_rects: Array = MapParser.merge_type(grid_data, grid_rows, grid_cols, 8)
+	var pc_rects: Array = MapParser.merge_type(grid_data, grid_rows, grid_cols, 9)
 
 	var spawn_grid: Vector2 = MapParser.find_spawn(grid_data, grid_rows, grid_cols)
 	spawn_position = Vector3(spawn_grid.x * GameConfig.SCALE, 2.0, spawn_grid.y * GameConfig.SCALE)
@@ -114,7 +115,7 @@ func _ready() -> void:
 	puzzle_manager = PuzzleManager.new()
 	puzzle_manager.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(puzzle_manager)
-	puzzle_manager.setup(room_positions, spawn_position, game_ui, whiteboard_nodes, wall_rects)
+	puzzle_manager.setup(room_positions, spawn_position, game_ui, whiteboard_nodes, wall_rects, pc_rects)
 
 
 	print("Ready! Walls: ", wall_rects.size(), " | Doors: ", doors.size(), " | Rooms: ", room_positions.size())
@@ -153,7 +154,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Freeze player during quiz, code entry, or win
-	player.movement_enabled = not puzzle_manager.quiz_active and not puzzle_manager.game_won and not puzzle_manager.code_panel_open
+	player.movement_enabled = not puzzle_manager.quiz_active and not puzzle_manager.game_won and not puzzle_manager.code_panel_open and not puzzle_manager.pc_code_panel_open
 	player.update_movement(delta)
 	player.update_flashlight(
 		delta,
@@ -193,6 +194,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				puzzle_manager._on_code_confirmed()
 			else:
 				game_ui.handle_code_key_input(event.keycode)
+		return
+
+	# While PC code entry panel is open
+	if puzzle_manager.pc_code_panel_open:
+		if event is InputEventKey and event.pressed:
+			if event.keycode == KEY_ESCAPE:
+				puzzle_manager._on_pc_code_cancelled()
+			elif event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
+				puzzle_manager._on_pc_code_confirmed()
+			else:
+				game_ui.handle_pc_code_key_input(event.keycode)
 		return
 
 	# While quiz is open, only allow Escape to close it

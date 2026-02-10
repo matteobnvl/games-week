@@ -27,6 +27,16 @@ var code_active_slot: int = -1
 var code_confirm_btn: Button
 var code_cancel_btn: Button
 var code_entry_active: bool = false
+
+# PC Code Entry UI
+var pc_code_panel: PanelContainer
+var pc_code_digit_labels: Array = []
+var pc_code_digit_values: Array = [-1, -1, -1, -1]
+var pc_code_active_slot: int = -1
+var pc_code_confirm_btn: Button
+var pc_code_cancel_btn: Button
+var pc_code_entry_active: bool = false
+
 # Pause menu
 var pause_panel: PanelContainer
 var _music_slider: HSlider
@@ -39,6 +49,7 @@ func _ready() -> void:
 	_create_labels()
 	_create_quiz_panel()
 	_create_code_panel()
+	_create_pc_code_panel()
 	_create_pause_menu()
 
 
@@ -528,6 +539,177 @@ func handle_code_key_input(keycode: int) -> void:
 		if code_active_slot >= 0 and not code_locked_slots[code_active_slot]:
 			code_digit_values[code_active_slot] = -1
 			code_digit_labels[code_active_slot].text = "_"
+
+
+# ---------------------------------------------------------------------------
+# PC Code Entry Panel
+# ---------------------------------------------------------------------------
+
+func _create_pc_code_panel() -> void:
+	pc_code_panel = PanelContainer.new()
+	pc_code_panel.set_anchors_preset(Control.PRESET_CENTER)
+	pc_code_panel.position = Vector2(-260, -210)
+	pc_code_panel.custom_minimum_size = Vector2(520, 400)
+	pc_code_panel.visible = false
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.08, 0.12, 0.95)
+	style.border_color = Color(0.2, 0.4, 0.8)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	pc_code_panel.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 18)
+
+	# Title
+	var title := Label.new()
+	title.text = "CODE D'ACCES PC"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.3, 0.5, 1.0))
+	vbox.add_child(title)
+
+	# Digit slots
+	var digits_hbox := HBoxContainer.new()
+	digits_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	digits_hbox.add_theme_constant_override("separation", 20)
+
+	for i: int in range(4):
+		var slot_panel := PanelContainer.new()
+		slot_panel.custom_minimum_size = Vector2(70, 80)
+		var slot_style := StyleBoxFlat.new()
+		slot_style.bg_color = Color(0.15, 0.15, 0.2)
+		slot_style.border_color = Color(0.4, 0.4, 0.5)
+		slot_style.set_border_width_all(2)
+		slot_style.set_corner_radius_all(4)
+		slot_panel.add_theme_stylebox_override("panel", slot_style)
+
+		var digit_label := Label.new()
+		digit_label.text = "_"
+		digit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		digit_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		digit_label.add_theme_font_size_override("font_size", 40)
+		digit_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+		slot_panel.add_child(digit_label)
+
+		digits_hbox.add_child(slot_panel)
+		pc_code_digit_labels.append(digit_label)
+
+	vbox.add_child(digits_hbox)
+
+	# Instruction
+	var instruction := Label.new()
+	instruction.text = "Entrez le code d'acces"
+	instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	instruction.add_theme_font_size_override("font_size", 14)
+	instruction.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	vbox.add_child(instruction)
+
+	# Number buttons (0-9)
+	var num_hbox := HBoxContainer.new()
+	num_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	num_hbox.add_theme_constant_override("separation", 5)
+	for n: int in range(10):
+		var btn := Button.new()
+		btn.text = str(n)
+		btn.custom_minimum_size = Vector2(42, 42)
+		btn.pressed.connect(_on_pc_code_number_pressed.bind(n))
+		num_hbox.add_child(btn)
+	vbox.add_child(num_hbox)
+
+	# Action buttons
+	var action_hbox := HBoxContainer.new()
+	action_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	action_hbox.add_theme_constant_override("separation", 20)
+
+	pc_code_confirm_btn = Button.new()
+	pc_code_confirm_btn.text = "Confirmer"
+	pc_code_confirm_btn.custom_minimum_size = Vector2(150, 45)
+	action_hbox.add_child(pc_code_confirm_btn)
+
+	pc_code_cancel_btn = Button.new()
+	pc_code_cancel_btn.text = "Annuler"
+	pc_code_cancel_btn.custom_minimum_size = Vector2(150, 45)
+	action_hbox.add_child(pc_code_cancel_btn)
+
+	vbox.add_child(action_hbox)
+
+	pc_code_panel.add_child(vbox)
+	add_child(pc_code_panel)
+
+
+func open_pc_code_panel() -> void:
+	pc_code_entry_active = true
+	pc_code_panel.visible = true
+	pc_code_active_slot = -1
+
+	for i: int in range(4):
+		pc_code_digit_values[i] = -1
+		pc_code_digit_labels[i].text = "_"
+		pc_code_digit_labels[i].add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+
+	_pc_select_next_empty_slot()
+
+
+func close_pc_code_panel() -> void:
+	pc_code_entry_active = false
+	pc_code_panel.visible = false
+	pc_code_active_slot = -1
+
+
+func _pc_select_next_empty_slot() -> void:
+	for i: int in range(4):
+		if pc_code_digit_values[i] == -1:
+			_pc_select_slot(i)
+			return
+	# All filled, select last
+	_pc_select_slot(3)
+
+
+func _pc_select_slot(index: int) -> void:
+	# Deselect previous
+	if pc_code_active_slot >= 0 and pc_code_active_slot < 4:
+		var prev_parent: PanelContainer = pc_code_digit_labels[pc_code_active_slot].get_parent()
+		var prev_style: StyleBoxFlat = prev_parent.get_theme_stylebox("panel")
+		prev_style.border_color = Color(0.4, 0.4, 0.5)
+
+	pc_code_active_slot = index
+
+	# Highlight selected
+	if index >= 0 and index < 4:
+		var parent: PanelContainer = pc_code_digit_labels[index].get_parent()
+		var cur_style: StyleBoxFlat = parent.get_theme_stylebox("panel")
+		cur_style.border_color = Color(1.0, 0.8, 0.2)
+
+
+func _on_pc_code_number_pressed(num: int) -> void:
+	if pc_code_active_slot < 0 or pc_code_active_slot >= 4:
+		return
+	pc_code_digit_values[pc_code_active_slot] = num
+	pc_code_digit_labels[pc_code_active_slot].text = str(num)
+	_pc_select_next_empty_slot()
+
+
+func get_entered_pc_code() -> Array:
+	return pc_code_digit_values.duplicate()
+
+
+func handle_pc_code_key_input(keycode: int) -> void:
+	if not pc_code_entry_active:
+		return
+	if keycode >= KEY_0 and keycode <= KEY_9:
+		var num: int = keycode - KEY_0
+		_on_pc_code_number_pressed(num)
+	elif keycode >= KEY_KP_0 and keycode <= KEY_KP_9:
+		var num: int = keycode - KEY_KP_0
+		_on_pc_code_number_pressed(num)
+	elif keycode == KEY_BACKSPACE:
+		if pc_code_active_slot >= 0:
+			pc_code_digit_values[pc_code_active_slot] = -1
+			pc_code_digit_labels[pc_code_active_slot].text = "_"
+
+
 # Game Over
 # ---------------------------------------------------------------------------
 
