@@ -43,8 +43,14 @@ var _music_slider: HSlider
 var _monster_slider: HSlider
 var _environment_slider: HSlider
 
+# Loading screen
+var loading_overlay: ColorRect
+var loading_label: Label
+var loading_dots_timer: float = 0.0
+
 
 func _ready() -> void:
+	_create_loading_screen()
 	_create_bars()
 	_create_labels()
 	_create_quiz_panel()
@@ -56,6 +62,31 @@ func _ready() -> void:
 # ---------------------------------------------------------------------------
 # Construction
 # ---------------------------------------------------------------------------
+
+func _create_loading_screen() -> void:
+	loading_overlay = ColorRect.new()
+	loading_overlay.color = Color(0.02, 0.02, 0.05, 1.0)
+	loading_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	loading_overlay.z_index = 200
+	add_child(loading_overlay)
+
+	loading_label = Label.new()
+	loading_label.text = "Chargement..."
+	loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	loading_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	loading_label.set_anchors_preset(Control.PRESET_CENTER)
+	loading_label.add_theme_font_size_override("font_size", 36)
+	loading_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.8, 0.9))
+	loading_label.z_index = 201
+	add_child(loading_label)
+
+
+func hide_loading_screen() -> void:
+	if loading_overlay:
+		loading_overlay.visible = false
+	if loading_label:
+		loading_label.visible = false
+
 
 func _create_bars() -> void:
 	# Stamina

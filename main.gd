@@ -124,7 +124,7 @@ func _ready() -> void:
 	puzzle_manager.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(puzzle_manager)
 	puzzle_manager.setup(room_positions, spawn_position, game_ui, whiteboard_nodes, wall_rects, pc_rects, exit_positions)
-
+	puzzle_manager.preload_finished.connect(_on_preload_finished)
 
 	print("Ready! Walls: ", wall_rects.size(), " | Doors: ", doors.size(), " | Rooms: ", room_positions.size())
 
@@ -138,14 +138,9 @@ func _process(delta: float) -> void:
 	if get_tree().paused:
 		return
 
-	# Delayed player spawn (wait a few frames for physics to settle)
+	# Player spawn is now triggered by _on_preload_finished
 	if not player_spawned:
-		frames_before_spawn -= 1
-		if frames_before_spawn <= 0:
-			_spawn_player()
-			_spawn_enemy()
-			_start_ambient_music()
-			player_spawned = true
+		return
 
 	# Animate doors
 	for door: Door in doors:
@@ -301,6 +296,15 @@ func _update_ui() -> void:
 # ---------------------------------------------------------------------------
 # Player spawn
 # ---------------------------------------------------------------------------
+
+func _on_preload_finished() -> void:
+	game_ui.hide_loading_screen()
+	_spawn_player()
+	_spawn_enemy()
+	_start_ambient_music()
+	player_spawned = true
+	print("Preload done, game started!")
+
 
 func _spawn_player() -> void:
 	player = PlayerController.new()
